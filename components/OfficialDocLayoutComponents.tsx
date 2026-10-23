@@ -555,8 +555,38 @@ export interface OfficialFlowchartOptions {
   steps: FlowchartStep[];
 }
 
+/**
+ * Strictly identifies whether a flowchart block is the ASEAN EE MRA designation procedure.
+ * Avoids false triggers from isolated technical keywords (e.g. CAB, DB, COD, 合格评定, Designation).
+ */
+export function isAseanDesignationProcedure(content: string): boolean {
+  if (!content) return false;
+
+  // 1. Explicit controlled type or template directive
+  if (/^(?:template|type|preset):\s*(?:generic|standard|flowchart|default)\b/im.test(content)) {
+    return false;
+  }
+  if (/^(?:template|type|preset):\s*(?:asean[-_]?designation|asean[-_]?ee[-_]?mra)\b/im.test(content)) {
+    return true;
+  }
+
+  // 2. Strict co-occurrence: explicitly ASEAN EE MRA designation procedure
+  const hasAseanContext = (
+    /(?:东盟|ASEAN)/i.test(content) &&
+    /(?:EE\s*MRA|电气|电子|相互承认|指定程序|指定申请|Designation\s*(?:Procedure|Process|Flow))/i.test(content)
+  );
+
+  const hasAseanDesignationRoles = (
+    /(?:CAB|合格评定机构)/i.test(content) &&
+    /(?:JSC|联合委员会|东盟秘书处|ASEAN\s*Secretariat)/i.test(content) &&
+    /(?:DB|指定机构|Designation|COD|指定证书)/i.test(content)
+  );
+
+  return Boolean(hasAseanContext && hasAseanDesignationRoles);
+}
+
 export function parseFlowchartBlock(content: string): OfficialFlowchartOptions {
-  const isDesignation = /CAB|DB|JSC|ASEAN|COD|Designation|合格评定|指定机构|联合委员会|Documentary\s*Evaluation|Site\s*Evaluation/i.test(content || '');
+  const isDesignation = isAseanDesignationProcedure(content || '');
 
   const opts: OfficialFlowchartOptions = {
     title: isDesignation 
@@ -629,8 +659,8 @@ export function parseFlowchartBlock(content: string): OfficialFlowchartOptions {
         stepNumber: stepNum,
         name: baseName,
         type: isStart ? 'start' : (isEnd ? 'end' : (isDecision ? 'decision' : 'process')),
-        noBranchAction: noAction || (isDecision && stepNum === 3 ? '认证机构纠正不符合项 (CAB rectifies discrepancies)' : (isDecision && stepNum === 4 ? '认证机构纠正不符合项 (CAB rectifies discrepancies)' : '')),
-        noLoopBackTo: noLoop || (isDecision && (stepNum === 3 || stepNum === 4) ? stepNum : (stepNum === 6 ? 5 : undefined)),
+        noBranchAction: noAction || (isDesignation && isDecision && (stepNum === 3 || stepNum === 4) ? '认证机构纠正不符合项 (CAB rectifies discrepancies)' : ''),
+        noLoopBackTo: noLoop || (isDesignation && isDecision && (stepNum === 3 || stepNum === 4) ? stepNum : (isDesignation && stepNum === 6 ? 5 : undefined)),
         yesBranchAction: yesAction,
       });
     }
@@ -712,7 +742,7 @@ export function parseFlowchartBlock(content: string): OfficialFlowchartOptions {
 
 export const OfficialFlowchartViewer: React.FC<{ content: string }> = ({ content }) => {
   const opts = parseFlowchartBlock(content);
-  const isDesignation = opts.isDesignationProcedure || opts.steps.some(s => s.type === 'decision' && s.noBranchAction);
+  const isDesignation = Boolean(opts.isDesignationProcedure);
 
   return (
     <div className="my-8 border border-slate-300 rounded-2xl overflow-hidden bg-white shadow-md font-sans select-none">
@@ -882,6 +912,15 @@ export const OfficialFlowchartViewer: React.FC<{ content: string }> = ({ content
                           {step.desc && (
                             <div className="text-xs text-slate-600 mt-0.5">
                               {step.desc}
+                            </div>
+                          )}
+                          {step.noBranchAction && (
+                            <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 mt-1 inline-flex items-center gap-1.5 font-medium">
+                              <span className="font-bold text-amber-900">[否 / No]:</span>
+                              <span>{step.noBranchAction}</span>
+                              {step.noLoopBackTo && (
+                                <span className="text-amber-700 font-mono text-[11px]">↺ 返回步骤{step.noLoopBackTo}</span>
+                              )}
                             </div>
                           )}
                         </div>

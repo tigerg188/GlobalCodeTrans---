@@ -20,6 +20,7 @@ export interface SpectrumChartOptions {
   SDS?: number;
   SD1?: number;
   caption?: string;
+  hasExplicitParameters?: boolean;
 }
 
 export interface WindChartOptions {
@@ -59,6 +60,7 @@ export function dataUrlToUint8Array(dataUrl: string): Uint8Array {
 }
 
 export function parseSpectrumBlock(content: string): SpectrumChartOptions {
+  let hasExplicit = content.includes('curves:') || content.includes('segment:') || content.includes('反应谱') || content.includes('Response Spectrum') || content.includes('SDS');
   const params: SpectrumChartOptions = {
     title: "设计加速度反应谱曲线 (Design Response Spectrum)",
     T0: 0.08,
@@ -67,6 +69,7 @@ export function parseSpectrumBlock(content: string): SpectrumChartOptions {
     SDS: 1.05,
     SD1: 0.42,
     caption: "图 6.1 设计加速度反应谱曲线 (Design Response Spectrum) • 依据 ASCE 7-16 / IBC 标准",
+    hasExplicitParameters: true,
   };
 
   const lines = content.split('\n');
@@ -85,13 +88,15 @@ export function parseSpectrumBlock(content: string): SpectrumChartOptions {
       const sdsMatch = trimmed.match(/S_?\{?DS\}?\s*=\s*([0-9\.]+)/i);
       const sd1Match = trimmed.match(/S_?\{?D1\}?\s*=\s*([0-9\.]+)/i);
 
-      if (t0Match) params.T0 = parseFloat(t0Match[1]);
-      if (tsMatch) params.Ts = parseFloat(tsMatch[1]);
-      if (tlMatch) params.TL = parseFloat(tlMatch[1]);
-      if (sdsMatch) params.SDS = parseFloat(sdsMatch[1]);
-      if (sd1Match) params.SD1 = parseFloat(sd1Match[1]);
+      if (t0Match) { params.T0 = parseFloat(t0Match[1]); hasExplicit = true; }
+      if (tsMatch) { params.Ts = parseFloat(tsMatch[1]); hasExplicit = true; }
+      if (tlMatch) { params.TL = parseFloat(tlMatch[1]); hasExplicit = true; }
+      if (sdsMatch) { params.SDS = parseFloat(sdsMatch[1]); hasExplicit = true; }
+      if (sd1Match) { params.SD1 = parseFloat(sd1Match[1]); hasExplicit = true; }
     }
   }
+
+  params.hasExplicitParameters = hasExplicit;
 
   return params;
 }
@@ -203,7 +208,7 @@ export function generateResponseSpectrumChartPng(options: SpectrumChartOptions =
   if (typeof document === 'undefined') return null;
 
   try {
-    const width = 1200;
+    const width = 1350;
     const height = 640;
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -223,7 +228,7 @@ export function generateResponseSpectrumChartPng(options: SpectrumChartOptions =
     const SD1 = options.SD1 ?? 0.42;
 
     const padLeft = 130;
-    const padRight = 60;
+    const padRight = 100;
     const padTop = 60;
     const padBottom = 110;
     const gWidth = width - padLeft - padRight;
@@ -479,7 +484,7 @@ export function generateResponseSpectrumChartPng(options: SpectrumChartOptions =
     ctx.lineTo(xMid2 + 60, yMid2 - 30);
     ctx.stroke();
     ctx.restore();
-    drawPillBadge('Sa = (SD1 · TL) / T²', xMid2 + 155, yMid2 - 35, 175, 32);
+    drawPillBadge('Sa = (SD1 · TL) / T²', xMid2 + 110, yMid2 - 35, 175, 32);
 
     // 11. Bottom Official Figure Caption (Strict Engineering Style)
     const captionText = options.caption || '图 6.1 设计加速度反应谱曲线 (Design Response Spectrum) • 依据 ASCE 7-16 / IBC 标准';
@@ -1223,7 +1228,7 @@ export function generateFlowchartPng(content: string): Uint8Array | null {
 
   try {
     const parsed = parseFlowchartBlock(content);
-    const isDesignation = parsed.isDesignationProcedure || parsed.steps.some(s => s.type === 'decision' && s.noBranchAction);
+    const isDesignation = Boolean(parsed.isDesignationProcedure);
 
     const width = 1200;
     const height = isDesignation ? 1080 : Math.max(560, 100 + parsed.steps.length * 70 + 80);
@@ -1244,7 +1249,7 @@ export function generateFlowchartPng(content: string): Uint8Array | null {
     ctx.font = 'bold 18px "SimHei", "Microsoft YaHei", sans-serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
-    ctx.fillText(parsed.title || '指定申请程序流程图 (Application Procedure for Designation Flow Chart)', 60, 53);
+    ctx.fillText(parsed.title || (isDesignation ? '指定申请程序流程图 (Application Procedure for Designation Flow Chart)' : '业务流转与申请审批流程图 (Flow Chart)'), 60, 53);
 
     // Frame
     ctx.strokeStyle = '#cbd5e1';
@@ -1699,6 +1704,16 @@ export function generateFlowchartPng(content: string): Uint8Array | null {
         ctx.textAlign = 'left';
         ctx.fillText(step.name, boxX + 54, y + 29);
 
+        // If generic decision has a [No] action, draw label on the right side of the step box
+        if (isDecision && step.noBranchAction) {
+          ctx.font = '11px "SimHei", sans-serif';
+          ctx.fillStyle = '#b45309';
+          ctx.textAlign = 'right';
+          const noTag = `[否/No: ${step.noBranchAction}${step.noLoopBackTo ? ` ↺步${step.noLoopBackTo}` : ''}]`;
+          ctx.fillText(noTag, boxX + stepBoxW - 16, y + 28);
+          ctx.textAlign = 'left';
+        }
+
         // Arrow
         if (idx < parsed.steps.length - 1) {
           drawDownArrow(ctx, width / 2, y + stepBoxH, y + stepBoxH + 18, isDecision ? '[Yes / 是]' : undefined);
@@ -1710,7 +1725,7 @@ export function generateFlowchartPng(content: string): Uint8Array | null {
     ctx.font = 'bold 15px "SimHei", "Microsoft YaHei", sans-serif';
     ctx.fillStyle = '#0f172a';
     ctx.textAlign = 'center';
-    ctx.fillText(parsed.caption || '图示：业务办理与申请审批流程图', width / 2, height - 16);
+    ctx.fillText(parsed.caption || (isDesignation ? '图示：合格评定机构（CAB）指定申请与审批程序流程图' : '图示：业务办理与申请审批流程图'), width / 2, height - 16);
 
     const dataUrl = canvas.toDataURL('image/png');
     return dataUrlToUint8Array(dataUrl);

@@ -41,6 +41,7 @@ import {
   renderSvgToPngBuffer,
   generateUniversalEmblemPng,
   SvgRenderResult,
+  dataUrlToUint8Array,
 } from './chartImageGenerator';
 import {
   parseDocMarginBlock,
@@ -202,7 +203,23 @@ function createTextRunsForChunk(text: string, defaultOptions: RunOptions = {}): 
  * Cleans LaTeX escape sequences into clear standard mathematical unicode representation
  */
 function cleanLaTeXSymbols(str: string): string {
+  if (!str) return '';
   return str
+    .replace(/SDSSDS/g, 'S_{DS}')
+    .replace(/SD1SD1/g, 'S_{D1}')
+    .replace(/\bTT\b/g, 'T')
+    .replace(/\\frac\s*\\frac/g, '\\frac')
+    .replace(/TS\s*=\s*TS\s*=/g, 'T_s =')
+    .replace(/\\\{S_?\{?DS\}?\\\}/g, 'S_{DS}')
+    .replace(/\\\{S_?\{?D1\}?\\\}/g, 'S_{D1}')
+    .replace(/(\{S_?\{?D1\}?\})\s*(\{S_?\{?DS\}?\})/g, '\\frac{S_{D1}}{S_{DS}}')
+    .replace(/S_?\{?D1\}?\s*\/\s*S_?\{?DS\}/g, '\\frac{S_{D1}}{S_{DS}}')
+    .replace(/0\.2\s*\(\s*\\frac\{S_{D1}\}\{S_{DS}\}\s*\)/g, '0.2 \\frac{S_{D1}}{S_{DS}}')
+    .replace(/ൌ/g, '=')
+    .replace(/൅/g, '+')
+    .replace(/ൈ/g, '×')
+    .replace(/ሺ/g, '(')
+    .replace(/ࣰ/g, ')')
     .replace(/\\cdot(?![a-zA-Z])/g, ' · ')
     .replace(/\\times(?![a-zA-Z])/g, ' × ')
     .replace(/\\pm(?![a-zA-Z])/g, ' ± ')
@@ -314,11 +331,21 @@ export function parseLatexToDocxMathChildren(rawLatex: string): any[] {
         }
       }
 
-      // 2. Square roots: \sqrt{...}
+      // 2. Square roots & Radicals: \sqrt{...} or \sqrt[n]{...}
       const sqrtMatch = latex.substring(i).match(/^\\+sqrt\b/);
       if (sqrtMatch) {
         i += sqrtMatch[0].length;
         while (i < latex.length && /\s/.test(latex[i])) i++;
+        let degreeChildren: any[] | undefined = undefined;
+        if (latex[i] === '[') {
+          const endDeg = findClosingBracket(latex, i + 1, '[', ']');
+          if (endDeg !== -1) {
+            const degStr = latex.substring(i + 1, endDeg);
+            degreeChildren = parseLatexToDocxMathChildren(degStr);
+            i = endDeg + 1;
+            while (i < latex.length && /\s/.test(latex[i])) i++;
+          }
+        }
         if (latex[i] === '{') {
           const endRad = findClosingBrace(latex, i + 1);
           if (endRad !== -1) {
@@ -326,7 +353,8 @@ export function parseLatexToDocxMathChildren(rawLatex: string): any[] {
             i = endRad + 1;
             elements.push(
               new MathRadical({
-                children: parseLatexToDocxMathChildren(radStr)
+                children: parseLatexToDocxMathChildren(radStr),
+                degree: degreeChildren
               })
             );
             continue;
@@ -343,29 +371,47 @@ export function parseLatexToDocxMathChildren(rawLatex: string): any[] {
           const roundBracket = new MathRoundBrackets({
             children: parseLatexToDocxMathChildren(inside)
           });
-          if (i < latex.length && (latex[i] === '^' || latex[i] === '_')) {
-            const isSuper = latex[i] === '^';
-            i++;
-            let scriptStr = '';
-            if (latex[i] === '{') {
-              const endS = findClosingBrace(latex, i + 1);
-              scriptStr = latex.substring(i + 1, endS);
-              i = endS + 1;
-            } else {
-              scriptStr = latex[i];
+          let subStr: string | null = null;
+          let supStr: string | null = null;
+          while (i < latex.length && (latex[i] === '_' || latex[i] === '^')) {
+            if (latex[i] === '_') {
               i++;
+              if (latex[i] === '{') {
+                const endS = findClosingBrace(latex, i + 1);
+                subStr = latex.substring(i + 1, endS !== -1 ? endS : undefined);
+                i = endS !== -1 ? endS + 1 : latex.length;
+              } else {
+                subStr = latex[i] || '';
+                i++;
+              }
+            } else if (latex[i] === '^') {
+              i++;
+              if (latex[i] === '{') {
+                const endS = findClosingBrace(latex, i + 1);
+                supStr = latex.substring(i + 1, endS !== -1 ? endS : undefined);
+                i = endS !== -1 ? endS + 1 : latex.length;
+              } else {
+                supStr = latex[i] || '';
+                i++;
+              }
             }
-            if (isSuper) {
-              elements.push(new MathSuperScript({
-                children: [roundBracket],
-                superScript: parseLatexToDocxMathChildren(scriptStr)
-              }));
-            } else {
-              elements.push(new MathSubScript({
-                children: [roundBracket],
-                subScript: parseLatexToDocxMathChildren(scriptStr)
-              }));
-            }
+          }
+          if (subStr && supStr) {
+            elements.push(new MathSubSuperScript({
+              children: [roundBracket],
+              subScript: parseLatexToDocxMathChildren(subStr),
+              superScript: parseLatexToDocxMathChildren(supStr)
+            }));
+          } else if (subStr) {
+            elements.push(new MathSubScript({
+              children: [roundBracket],
+              subScript: parseLatexToDocxMathChildren(subStr)
+            }));
+          } else if (supStr) {
+            elements.push(new MathSuperScript({
+              children: [roundBracket],
+              superScript: parseLatexToDocxMathChildren(supStr)
+            }));
           } else {
             elements.push(roundBracket);
           }
@@ -379,11 +425,53 @@ export function parseLatexToDocxMathChildren(rawLatex: string): any[] {
         if (endBracket !== -1) {
           const inside = latex.substring(i + 1, endBracket);
           i = endBracket + 1;
-          elements.push(
-            new MathSquareBrackets({
-              children: parseLatexToDocxMathChildren(inside)
-            })
-          );
+          const squareBracket = new MathSquareBrackets({
+            children: parseLatexToDocxMathChildren(inside)
+          });
+          let subStr: string | null = null;
+          let supStr: string | null = null;
+          while (i < latex.length && (latex[i] === '_' || latex[i] === '^')) {
+            if (latex[i] === '_') {
+              i++;
+              if (latex[i] === '{') {
+                const endS = findClosingBrace(latex, i + 1);
+                subStr = latex.substring(i + 1, endS !== -1 ? endS : undefined);
+                i = endS !== -1 ? endS + 1 : latex.length;
+              } else {
+                subStr = latex[i] || '';
+                i++;
+              }
+            } else if (latex[i] === '^') {
+              i++;
+              if (latex[i] === '{') {
+                const endS = findClosingBrace(latex, i + 1);
+                supStr = latex.substring(i + 1, endS !== -1 ? endS : undefined);
+                i = endS !== -1 ? endS + 1 : latex.length;
+              } else {
+                supStr = latex[i] || '';
+                i++;
+              }
+            }
+          }
+          if (subStr && supStr) {
+            elements.push(new MathSubSuperScript({
+              children: [squareBracket],
+              subScript: parseLatexToDocxMathChildren(subStr),
+              superScript: parseLatexToDocxMathChildren(supStr)
+            }));
+          } else if (subStr) {
+            elements.push(new MathSubScript({
+              children: [squareBracket],
+              subScript: parseLatexToDocxMathChildren(subStr)
+            }));
+          } else if (supStr) {
+            elements.push(new MathSuperScript({
+              children: [squareBracket],
+              superScript: parseLatexToDocxMathChildren(supStr)
+            }));
+          } else {
+            elements.push(squareBracket);
+          }
           continue;
         }
       }
@@ -399,41 +487,63 @@ export function parseLatexToDocxMathChildren(rawLatex: string): any[] {
         }
       }
 
-      // 6. Variable with Subscript / Superscript: e.g. C_{vx}, w_x h_x^k, ∑_{i=1}^n
-      const tokenMatch = latex.substring(i).match(/^([A-Za-z0-9πναβγθλμσωΔΣ\u2200-\u22FF\u0370-\u03FF\u2100-\u214F]+)(?:(_\{[^}]+\}|_[A-Za-z0-9]+))?(?:\^(\{[^}]+\}|[A-Za-z0-9]+))?/);
-      if (tokenMatch && (tokenMatch[2] || tokenMatch[3])) {
-        const baseText = tokenMatch[1];
-        const subMatch = tokenMatch[2];
-        const supMatch = tokenMatch[3];
-        i += tokenMatch[0].length;
-
-        const subStr = subMatch ? (subMatch.startsWith('_{') ? subMatch.slice(2, -1) : subMatch.slice(1)) : null;
-        const supStr = supMatch ? (supMatch.startsWith('^{') ? supMatch.slice(2, -1) : supMatch.slice(1)) : null;
-
-        if (subStr && supStr) {
-          elements.push(
-            new MathSubSuperScript({
-              children: [new MathRun(baseText)],
-              subScript: parseLatexToDocxMathChildren(subStr),
-              superScript: parseLatexToDocxMathChildren(supStr)
-            })
-          );
-        } else if (subStr) {
-          elements.push(
-            new MathSubScript({
-              children: [new MathRun(baseText)],
-              subScript: parseLatexToDocxMathChildren(subStr)
-            })
-          );
-        } else if (supStr) {
-          elements.push(
-            new MathSuperScript({
-              children: [new MathRun(baseText)],
-              superScript: parseLatexToDocxMathChildren(supStr)
-            })
-          );
+      // 6. Variable with Subscript / Superscript: e.g. C_{vx}, w_x h_x^k, ∑_{i=1}^n, ∫_{0}^{T}
+      const baseMatch = latex.substring(i).match(/^([A-Za-z0-9πναβγθλμσωΔΣ∫∑∏\u2200-\u22FF\u0370-\u03FF\u2100-\u214F]+)/);
+      if (baseMatch) {
+        const baseText = baseMatch[1];
+        const nextChar = latex[i + baseText.length];
+        if (nextChar === '_' || nextChar === '^') {
+          i += baseText.length;
+          let subStr: string | null = null;
+          let supStr: string | null = null;
+          while (i < latex.length && (latex[i] === '_' || latex[i] === '^')) {
+            if (latex[i] === '_') {
+              i++;
+              if (latex[i] === '{') {
+                const endS = findClosingBrace(latex, i + 1);
+                subStr = latex.substring(i + 1, endS !== -1 ? endS : undefined);
+                i = endS !== -1 ? endS + 1 : latex.length;
+              } else {
+                subStr = latex[i] || '';
+                i++;
+              }
+            } else if (latex[i] === '^') {
+              i++;
+              if (latex[i] === '{') {
+                const endS = findClosingBrace(latex, i + 1);
+                supStr = latex.substring(i + 1, endS !== -1 ? endS : undefined);
+                i = endS !== -1 ? endS + 1 : latex.length;
+              } else {
+                supStr = latex[i] || '';
+                i++;
+              }
+            }
+          }
+          if (subStr && supStr) {
+            elements.push(
+              new MathSubSuperScript({
+                children: [new MathRun(baseText)],
+                subScript: parseLatexToDocxMathChildren(subStr),
+                superScript: parseLatexToDocxMathChildren(supStr)
+              })
+            );
+          } else if (subStr) {
+            elements.push(
+              new MathSubScript({
+                children: [new MathRun(baseText)],
+                subScript: parseLatexToDocxMathChildren(subStr)
+              })
+            );
+          } else if (supStr) {
+            elements.push(
+              new MathSuperScript({
+                children: [new MathRun(baseText)],
+                superScript: parseLatexToDocxMathChildren(supStr)
+              })
+            );
+          }
+          continue;
         }
-        continue;
       }
 
       // 7. Plain text / Operators / Non-scripted tokens
@@ -587,6 +697,64 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
       continue;
     }
 
+    if (line.includes('【工程技术参数') || line.includes('【数据块') || line.includes('【工程技术参数 / 数据块')) {
+      i++;
+      continue;
+    }
+
+    // 0.00 Embedded Image Markdown: ![caption](data:image/... or url)
+    const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if (imgMatch) {
+      const altText = imgMatch[1].trim();
+      const imgSrc = imgMatch[2].trim();
+      let imgBuffer: Uint8Array | null = null;
+      if (imgSrc.startsWith('data:image/')) {
+        imgBuffer = dataUrlToUint8Array(imgSrc);
+      }
+
+      if (imgBuffer) {
+        docElements.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+              new ImageRun({
+                type: 'png',
+                data: imgBuffer,
+                transformation: {
+                  width: 520,
+                  height: 360,
+                },
+              }),
+            ],
+            spacing: { before: 120, after: 60 },
+          })
+        );
+        if (altText) {
+          docElements.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new TextRun({
+                  text: altText,
+                  bold: true,
+                  size: 20,
+                  color: "0F172A",
+                  font: {
+                    ascii: FONT_ENGLISH,
+                    eastAsia: FONT_CHINESE_HEADING,
+                    cs: FONT_LAO,
+                  },
+                }),
+              ],
+              spacing: { before: 40, after: 120, line: LINE_SPACING_1_15, lineRule: LineRuleType.AUTO },
+            })
+          );
+        }
+        i++;
+        continue;
+      }
+    }
+
     // 0.0 Raw embedded <svg>...</svg> Vector Drawing / Icon / Diagram
     if (line.startsWith('<svg') || (line.includes('<svg') && !line.startsWith('|'))) {
       const svgLines: string[] = [line];
@@ -700,7 +868,7 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
       const isHeaderGrid = codeType.includes('header') || codeType.includes('letterhead') || (codeType.includes('layout') && (blockContent.includes('countryName') || blockContent.includes('ministry') || blockContent.includes('motto')));
       const isSignatureSeal = codeType.includes('seal') || codeType.includes('signature') || blockContent.includes('sealDiameter') || blockContent.includes('signatory') || blockContent.includes('骑年盖月');
       const isFlowchart = codeType.includes('flowchart') || codeType.includes('process') || (blockContent.includes('steps:') && (blockContent.includes('->') || blockContent.includes('→') || blockContent.includes('- ')));
-      const isSpectrum = codeType.includes('spectrum') || codeType.includes('response') || blockContent.includes('SDS');
+      const isSpectrum = codeType.includes('spectrum') || codeType.includes('response') || codeType.includes('engineering-diagram') || codeType.includes('diagram') || blockContent.includes('SDS') || blockContent.includes('curves:') || blockContent.includes('segment:');
       const isWind = codeType.includes('wind') || codeType.includes('pressure');
       const isLayout = codeType.includes('layout') || codeType.includes('spec-sheet') || codeType.includes('blueprint');
       const isDiagram = codeType.includes('diagram') || codeType.includes('chart') || codeType.includes('figure') || codeType.includes('drawing') || codeType.includes('detail') || blockContent.includes('caption:');
@@ -732,11 +900,19 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
       } else if (isFlowchart) {
         const flowOpts = parseFlowchartBlock(blockContent);
         chartImageBuffer = generateFlowchartPng(blockContent);
-        figureCaption = flowOpts.caption || flowOpts.title || "图示：业务办理与申请审批流程图";
+        figureCaption = flowOpts.caption || flowOpts.title || (flowOpts.isDesignationProcedure
+          ? "图示：合格评定机构（CAB）指定申请与审批程序流程图"
+          : "图示：业务办理流转步骤对照说明（复杂多向分支与逆向回路请核对原始图样）");
       } else if (isSpectrum) {
         const params = parseSpectrumBlock(blockContent);
-        chartImageBuffer = generateResponseSpectrumChartPng(params);
-        figureCaption = params.caption || "图 6.1 设计加速度反应谱曲线 (Design Response Spectrum) • 依据 ASCE 7-16 / IBC 标准";
+        // Fidelity Guard: Only render synthetic plot if explicit parameters were detected in document
+        if (params.hasExplicitParameters) {
+          chartImageBuffer = generateResponseSpectrumChartPng(params);
+          figureCaption = params.caption || "图示：设计加速度反应谱曲线 (依据文中实测参数计算绘制)";
+        } else {
+          // Fallback: Do not emit fabricated curve! Formatted as technical parameter explanation block.
+          figureCaption = params.caption || "图示：设计加速度反应谱说明（参数未详列，请以原件图样为准）";
+        }
       } else if (isWind) {
         const params = parseWindBlock(blockContent);
         chartImageBuffer = generateWindPressureChartPng(params);
@@ -748,8 +924,11 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
         figureCaption = opts.caption || "图示：标准版面与装订标尺样张";
       } else if (isDiagram) {
         const params = parseDiagramBlock(blockContent);
-        chartImageBuffer = generateEngineeringDiagramPng(params);
-        figureCaption = params.caption || "图示：几何构造与尺寸标注特征图";
+        // Fidelity Guard: Do not emit fake generic geometric boxes ("基准跨度 L"); only render if explicit parameters exist
+        if (params.parameters && Object.keys(params.parameters).length > 0) {
+          chartImageBuffer = generateEngineeringDiagramPng(params);
+          figureCaption = params.caption || "图示：几何构造与尺寸标注特征图";
+        }
         if (params.formulas) topFormulas = params.formulas;
       }
 
@@ -808,6 +987,11 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
         if (i < lines.length && (lines[i].trim() === figureCaption.trim() || (lines[i].trim().startsWith('图') && lines[i].trim().length > 5 && figureCaption.includes(lines[i].trim().slice(0, 10))))) {
           i++;
         }
+        continue;
+      }
+
+      const isAuditBlock = codeType.includes('audit') || codeType.includes('params') || blockContent.includes('DIAGRAM-AUDIT-PARAMETERS') || (blockContent.trim().startsWith('[') && blockContent.includes('name'));
+      if (isAuditBlock) {
         continue;
       }
 
