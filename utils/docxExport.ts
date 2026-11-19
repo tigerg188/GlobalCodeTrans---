@@ -34,6 +34,7 @@ import {
   generateHeaderGridLayoutPng,
   generateSignatureSealLayoutPng,
   generateFlowchartPng,
+  generateEconomicCurveChartPng,
   parseFlowchartBlock,
   parseSpectrumBlock,
   parseWindBlock,
@@ -205,16 +206,6 @@ function createTextRunsForChunk(text: string, defaultOptions: RunOptions = {}): 
 function cleanLaTeXSymbols(str: string): string {
   if (!str) return '';
   return str
-    .replace(/SDSSDS/g, 'S_{DS}')
-    .replace(/SD1SD1/g, 'S_{D1}')
-    .replace(/\bTT\b/g, 'T')
-    .replace(/\\frac\s*\\frac/g, '\\frac')
-    .replace(/TS\s*=\s*TS\s*=/g, 'T_s =')
-    .replace(/\\\{S_?\{?DS\}?\\\}/g, 'S_{DS}')
-    .replace(/\\\{S_?\{?D1\}?\\\}/g, 'S_{D1}')
-    .replace(/(\{S_?\{?D1\}?\})\s*(\{S_?\{?DS\}?\})/g, '\\frac{S_{D1}}{S_{DS}}')
-    .replace(/S_?\{?D1\}?\s*\/\s*S_?\{?DS\}/g, '\\frac{S_{D1}}{S_{DS}}')
-    .replace(/0\.2\s*\(\s*\\frac\{S_{D1}\}\{S_{DS}\}\s*\)/g, '0.2 \\frac{S_{D1}}{S_{DS}}')
     .replace(/ൌ/g, '=')
     .replace(/൅/g, '+')
     .replace(/ൈ/g, '×')
@@ -577,10 +568,10 @@ export function parseLatexToDocxMathChildren(rawLatex: string): any[] {
       }
     }
 
-    return elements.length > 0 ? elements : [new MathRun(latex)];
+    return elements.length > 0 ? elements : [new MathRun(rawLatex || latex)];
   } catch (err) {
     console.warn("Math formula parsing fallback:", err);
-    return [new MathRun(latex)];
+    return [new MathRun(rawLatex || latex)];
   }
 }
 
@@ -862,13 +853,19 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
       }
       if (i < lines.length) i++; // skip closing ```
       const blockContent = codeLines.join('\n');
-
-      const isSvg = codeType.includes('svg') || blockContent.includes('<svg') || (codeType === 'xml' && blockContent.includes('<svg'));
+      const isEconomicCurve = codeType.includes('economic') || codeType.includes('curve') || 
+        blockContent.includes('EFo') || blockContent.includes('TOL') || 
+        blockContent.includes('E_Fo') || blockContent.includes('T_OL') || 
+        blockContent.includes('E_FO') || blockContent.includes('xychart-beta') || 
+        blockContent.includes('经济效益');
+      const hasRealSvgPaths = blockContent.includes('<path') || blockContent.includes('<polyline') || blockContent.includes('<polygon');
+      const isDegenerateSvg = (blockContent.includes('EFo') || blockContent.includes('TOL') || blockContent.includes('E_Fo') || blockContent.includes('T_OL') || blockContent.includes('E_FO')) && !hasRealSvgPaths;
+      const isSvg = (codeType.includes('svg') || blockContent.includes('<svg') || (codeType === 'xml' && blockContent.includes('<svg'))) && !isDegenerateSvg;
       const isDocMargin = codeType.includes('margin') || (codeType.includes('layout') && (blockContent.includes('marginLeft') || blockContent.includes('margins:') || blockContent.includes('装订') || blockContent.includes('binding')));
       const isHeaderGrid = codeType.includes('header') || codeType.includes('letterhead') || (codeType.includes('layout') && (blockContent.includes('countryName') || blockContent.includes('ministry') || blockContent.includes('motto')));
       const isSignatureSeal = codeType.includes('seal') || codeType.includes('signature') || blockContent.includes('sealDiameter') || blockContent.includes('signatory') || blockContent.includes('骑年盖月');
       const isFlowchart = codeType.includes('flowchart') || codeType.includes('process') || (blockContent.includes('steps:') && (blockContent.includes('->') || blockContent.includes('→') || blockContent.includes('- ')));
-      const isSpectrum = codeType.includes('spectrum') || codeType.includes('response') || codeType.includes('engineering-diagram') || codeType.includes('diagram') || blockContent.includes('SDS') || blockContent.includes('curves:') || blockContent.includes('segment:');
+      const isSpectrum = (codeType.includes('spectrum') || codeType.includes('response-spectrum') || blockContent.includes('SDS') || blockContent.includes('S_DS')) && !codeType.includes('diagram') && !codeType.includes('curve') && !isEconomicCurve;
       const isWind = codeType.includes('wind') || codeType.includes('pressure');
       const isLayout = codeType.includes('layout') || codeType.includes('spec-sheet') || codeType.includes('blueprint');
       const isDiagram = codeType.includes('diagram') || codeType.includes('chart') || codeType.includes('figure') || codeType.includes('drawing') || codeType.includes('detail') || blockContent.includes('caption:');
@@ -878,7 +875,10 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
       let topFormulas: string[] = [];
       let customHeight: number | null = null;
 
-      if (isSvg) {
+      if (isEconomicCurve) {
+        chartImageBuffer = generateEconomicCurveChartPng();
+        figureCaption = "图示：多系列经济效益曲线与交点分析图 (E_Fo vs T_OL)";
+      } else if (isSvg) {
         const svgRes = await renderSvgToPngBuffer(blockContent, 540);
         if (svgRes) {
           chartImageBuffer = svgRes.buffer;
@@ -987,6 +987,25 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
         if (i < lines.length && (lines[i].trim() === figureCaption.trim() || (lines[i].trim().startsWith('图') && lines[i].trim().length > 5 && figureCaption.includes(lines[i].trim().slice(0, 10))))) {
           i++;
         }
+        continue;
+      }
+
+      if (isSpectrum && !chartImageBuffer) {
+        docElements.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+              new TextRun({
+                text: "【工程图样提示：设计反应谱计算参数未在文档中详列，依据工程保真原则不生成推定曲线，请核对原件图样】",
+                bold: true,
+                size: 21,
+                color: "64748B",
+                font: { ascii: FONT_ENGLISH, eastAsia: FONT_CHINESE_HEADING, cs: FONT_LAO },
+              }),
+            ],
+            spacing: { before: 120, after: 120, line: LINE_SPACING_1_15, lineRule: LineRuleType.AUTO },
+          })
+        );
         continue;
       }
 
@@ -1201,7 +1220,7 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
           insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: "64748B" },
           insideVertical: { style: BorderStyle.NONE },
         } : {
-          // 100% Full Grid Table (全部框线：上下左右 + 内部横竖框线全复现)
+          // Full Grid Table (全部框线：上下左右 + 内部横竖框线)
           top: { style: BorderStyle.SINGLE, size: 8, color: "334155" },
           bottom: { style: BorderStyle.SINGLE, size: 8, color: "334155" },
           left: { style: BorderStyle.SINGLE, size: 8, color: "334155" },

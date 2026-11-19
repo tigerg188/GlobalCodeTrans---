@@ -1,0 +1,1275 @@
+分析 [https://github.com/opendatalab/mineru](https://github.com/opendatalab/mineru) 项目，关于他的测评，技术路线等，核心公式曲线识别提取还原的技术是否可以提取集成到我的程序中
+
+
+# **MinerU 项目技术评估：公式识别、曲线提取与 GlobalCodeTrans 集成价值**
+
+值得引入测试
+
+公式识别价值高
+
+曲线还原需要二次开发
+
+**我的初步结论：MinerU 是一个值得认真研究的项目，尤其是它的数学公式识别、文档版面分析和结构化内容提取能力。对于你正在开发的 GlobalCodeTrans，我认为存在明确的技术融合价值。**
+
+但我不建议直接把 MinerU 整套程序移植进去，也不建议仅凭它的综合测评分数，就认定它可以解决公式、曲线、流程图的精准复现问题。
+
+更合理的做法是：
+
+1. 把 MinerU 作为独立的文档识别引擎。
+2. 优先研究和调用它的公式检测、公式识别及坐标定位能力。
+3. 将图表识别作为另一条独立技术路线。
+4. 让你现有程序负责翻译、结构化处理、图形重建和 Word 输出。
+
+下面分开分析。
+
+## **一、MinerU 到底是什么项目？**
+
+[MinerU is a High-Quality PDF Extraction Toolkit🔥🔥  > No coding, no login, just a simple UI, smooth interactions. > Flexible Gradio UI > Trending on GitHub > Available on Hugging Face Spaces > Easy… | Gradio | 11 comments](https://images.openai.com/static-rsc-4/820bf0KRU-8641NakJ2W_34If9oZbwu8Ob9k0p-heL8X5JgYyeJUiF19m6FpXnyIv1ELM__i8zEL7u29r4FQOwmfobr3nKsLMr-VTC-Fc2cRvAs-aw0fe7xaje24nXC1NDs-JsJ2lQEPRMTCNr1HlBQTOC54g-QawSaEalo_VLI?purpose=inline)
+
+**MinerU**
+
+开发团队：OpenDataLab
+
+官方仓库：[GitHub - opendatalab/MinerU](https://github.com/opendatalab/MinerU?utm_source=chatgpt.com)
+
+定位：复杂 PDF、Office 文档的解析、OCR、公式识别、表格结构识别及内容重建。
+
+截至目前，我查询到的官方仓库已经发展到 MinerU 4.2 系列，远不只是早期的 PDF 转 Markdown 工具。
+
+它的主要能力包括：
+
+| 技术模块                    | 主要功能              |
+| ----------------------- | ----------------- |
+| Layout Analysis         | 页面布局分析、内容区域定位     |
+| OCR                     | 多语言文字识别           |
+| Formula Recognition     | 数学公式识别、转换为 LaTeX  |
+| Table Recognition       | 表格结构识别、HTML 等格式输出 |
+| Chart Parsing           | 图表内容分析            |
+| Reading Order           | 文档阅读顺序恢复          |
+| Document Reconstruction | 结构化内容及文档格式输出      |
+
+它支持 PDF、DOCX、PPTX、XLSX 等多种输入格式，提供 Python SDK、CLI、HTTP API 等集成方式。官方还提供了中间 JSON、结构化内容和图片资源等输出。
+
+这意味着它不只是一个 OCR 算法，而是一套完整的文档解析基础设施。
+
+参考：[MinerU 官方仓库](https://github.com/opendatalab/MinerU?utm_source=chatgpt.com)、[官方输出格式说明](https://opendatalab.github.io/MinerU/reference/output_files/?utm_source=chatgpt.com)。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub+2
+
+
+
+## **二、技术路线：为什么它的公式识别值得关注？**
+
+MinerU 并不是让一个通用大模型直接阅读整页 PDF，然后凭语言理解生成内容。
+
+它采用的是多模块协同、分阶段识别的技术路线。
+
+[Bin Wang(王斌) - Homepage](https://images.openai.com/static-rsc-4/IMtCj5FKwtbG9T79hUAk2r9gnm_HvHiPHNxTfoq8HtffzfHoh6pDr_Vv1-Zp_eHIQUgVDdRj8kr5_jIzs356KoKrdpKSqDXrQbvcIOaCORWyJ3jIStwgy2dJ-inG0vfYcAuQUXdKbw9NQ9uCEFL1GZDWlmNErRG48vCGjO1hU5w?purpose=inline)
+
+[wangbindl.github.io](https://wangbindl.github.io/?utm_source=chatgpt.com)
+
+### **1. 页面布局检测**
+
+首先对整页文档进行分析，判断不同区域属于什么类型：
+
+- 正文文字
+- 数学公式
+- 表格
+- 图片
+- 图表
+- 标题、页眉、页脚等
+
+同时记录这些区域在原始页面中的位置。
+
+这一步很重要。
+
+因为工程文档中，公式往往不是孤立存在的，它可能与公式编号、解释文字、上下标、变量定义等内容紧密关联。
+
+如果只提取公式字符串，却丢失了原始位置和上下文，后续就很难准确放回原文。
+
+### **2. 高分辨率局部识别**
+
+MinerU2.5 的核心设计之一，是两阶段解析：
+
+- 第一阶段：对整页进行较低分辨率的全局布局分析。
+- 第二阶段：根据布局检测结果，从原始高分辨率页面裁剪局部区域，再进行精细识别。
+
+这比直接缩小整页图片后识别更有优势。
+
+尤其适合：
+
+- 密集数学公式；
+- 小字号上下标；
+- 分数、根号、积分符号；
+- 多行公式；
+- 中英文混合公式。
+
+它的技术报告也明确介绍了这种全局布局与局部内容识别解耦的设计。
+
+[image](https://www.google.com/s2/favicons?domain=https://arxiv.org\&sz=32)
+
+arxiv.org+1
+
+
+
+### **3. 数学公式专用识别模型**
+
+这里是我认为最值得你研究的部分。
+
+MinerU 的公式识别技术涉及：
+
+[unimernet · PyPI](https://images.openai.com/static-rsc-4/pNHV4BGwbvl9D2m338F1ToARjz3_l0516uX8aQsoP6rd0bdl4Qpe8ZRvlLc6w248k8OicZlMUUZ9fy-QPya2CIJnHkCn6qUv2b0GpVqXH5uZSn33VMlKzYtZYJeb_M6Br-QRBOmyFdzoeVvYgYpWcueIF-2V0RToaLvHZtKu0GY?purpose=inline)
+
+**UniMERNet**
+
+官方项目：[GitHub - opendatalab/UniMERNet](https://github.com/opendatalab/UniMERNet?utm_source=chatgpt.com)
+
+它的工作方式是：
+
+**原始公式图片**
+
+\\[ F(x)=\int_a^b f(t)\\,dt \\]
+
+**数学公式专用识别模型**
+
+检测符号、结构、上下标、分数、积分等
+
+**LaTeX 结构化表达**
+
+\\[ F(x)=\int_a^b f(t)\\,dt \\]
+
+**后续公式排版与重建**
+
+KaTeX / MathJax / DOCX 数学对象
+
+这里有一个重要区别：
+
+**LaTeX 识别正确，不等于 Word 公式还原正确。**
+
+例如，识别结果可能是正确的 LaTeX，但后续 DOCX 转换仍可能出现：
+
+- 分数层级错乱；
+- 上下标位置不正确；
+- 矩阵结构丢失；
+- 多行公式对齐错误；
+- 公式编号位置偏移。
+
+因此，识别、语义解析、排版输出必须作为三个独立环节进行测试。
+
+## **三、MinerU 的实际测评成绩如何？**
+
+这里不只看项目自己的宣传，我重点查阅了它所使用的公开评测体系：
+
+[Niels Rogge (@NielsRogge) on X](https://images.openai.com/static-rsc-4/1cBd-sQjBUnZx-eXjdJk9UnWTgAb9QfNLoNIuLbmWPFj5ILVp4CLrxsifChF3NL_ghEdnG9HROdNPxMKrh4g6Iju9_JmBBvQ-bPb8oxxq-dFu-IQAzSo8JjAb7MmPfYz1u8ZQT6B3GWixCDnECToiO1OB4Zn9gLSyzomi3F2AVM?purpose=inline)
+
+**OmniDocBench**
+
+[GitHub 官方评测仓库](https://github.com/opendatalab/OmniDocBench?utm_source=chatgpt.com)
+
+这是 OpenDataLab 建立的文档解析评测基准，已经被 CVPR 2025 接收。
+
+它的评测数据包括：
+
+- 1651 页 PDF；
+- 10 种文档类型；
+- 5 种版式类型；
+- 5 种语言类型；
+- 28 类区块级元素和 4 类文本跨度级元素。
+
+其中包括公式的 LaTeX 标注和位置标注，可以分别测试公式识别和整体文档解析能力。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub+1
+
+
+
+### **1. MinerU2.5-Pro 的评测成绩**
+
+我查到的 OmniDocBench v1.6_full 榜单中，结果如下：
+
+| 评测模型              | 参数规模     | 综合得分      |
+| ----------------- | -------- | --------- |
+| OXR-1.0           | 1.3B     | 97.03     |
+| TeleOCR           | 1.2B     | 96.91     |
+| OvisOCR2          | 0.8B     | 96.47     |
+| PaddleOCR-VL-1.6  | 0.9B     | 96.34     |
+| **MinerU2.5-Pro** | **1.2B** | **95.75** |
+| GLM-OCR           | 0.9B     | 95.22     |
+| MinerU-2.5        | 1.2B     | 93.04     |
+| MinerU-Pipeline   | —        | 86.47     |
+
+数据来源：OmniDocBench v1.6_full 公开榜单。以上是该评测版本的数据，不代表 MinerU 4.2 所有配置的实时测评成绩。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub+1
+
+### **2. 单独看公式识别**
+
+这一项更加值得关注。
+
+| 模型                | Formula CDM |
+| ----------------- | ----------- |
+| MiniCPM-OCR 1.0   | 98.08       |
+| PaddleOCR-VL-1.6  | 97.53       |
+| OvisOCR2          | 97.49       |
+| **MinerU2.5-Pro** | **97.45**   |
+| GLM-OCR           | 97.18       |
+| MinerU-2.5        | 95.77       |
+| MinerU-Pipeline   | 83.07       |
+
+公式识别成绩突出
+
+MinerU2.5-Pro 的公式 CDM 得分达到 97.45，位居这份榜单的第一梯队。
+
+这比只看综合分数更有意义，因为你关心的恰恰是公式识别，而不是普通文字 OCR。
+
+需要注意：
+
+CDM 是公式视觉结构相似度评价，不是对工程公式实际含义、计算结果或量纲正确性的完整验证。即使 CDM 很高，也不能据此认定每个工程公式都可以直接用于正式文件。
+
+### **3. 测评成绩有哪些局限？**
+
+我认为需要注意三个问题：
+
+**第一，综合得分不能代表图表还原能力。**
+
+OmniDocBench 的综合公式主要由文字编辑距离、表格 TEDS 和公式 CDM 三项构成：
+
+\\[ Overall=\frac{(1-TextED)\times100+TEDS+CDM}{3} \\]
+
+它没有把曲线坐标、数据点提取、曲线拓扑还原作为独立核心评分项。
+
+**第二，测试数据不等于工程专业数据。**
+
+普通学术论文公式识别得分很高，不意味着对工程设计规范、化工公式、复杂符号、特殊字体、工程图纸中的标注同样具有相同准确率。
+
+**第三，评测基准由项目团队参与建设。**
+
+这并不意味着评测不可信，但不能将单一团队的榜单作为唯一验收依据。最好用你自己的真实工程文件建立独立测试集。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub+1
+
+## **四、重点：曲线、图表究竟能不能提取和还原？**
+
+这是我认为需要特别谨慎的地方。
+
+MinerU 目前确实具有 Chart Parsing 能力，官方 3.1 系列起已经引入图像与图表解析，4.x 的 Advanced 档位也支持图表分析。
+
+但这里必须区分三种完全不同的能力。
+
+### **第一种：识别图表是什么**
+
+[Recommendation ITU-T J.1630 (06/2024) - End-to-end network characteristics requirement for video services over integrated broadband cable network](https://images.openai.com/static-rsc-4/TtQAJb_WRYZkfTzW0ePdHjI7iWvN06tIPXbVdwbIHRahbAfHEh4qeHLjpM7aksxSwr2jfU1HainjPb_HbmikrRQF2ZvHUg1bgVnFJ8mtn8tlj2Hs70v35Uav_CqDkfoeWVjT13YT3zjafmYPBdILgUHWpfdTcxfyVtBsgbRfdV0?purpose=inline)
+
+[itu.int](https://www.itu.int/epublications/publication/itu-t-j-1630-2024-06-end-to-end-network-characteristics-requirement-for-video-services-over-integrated-broadband-cable-network?utm_source=chatgpt.com)
+
+例如识别：
+
+- 这是温度变化曲线；
+- 横坐标是时间；
+- 纵坐标是压力；
+- 有三条不同颜色的曲线；
+- 图例分别对应三个工况。
+
+MinerU 可以尝试完成这类识别和描述。
+
+### **第二种：提取图表中的数据**
+
+这是更高一级的能力。
+
+例如原图有一条曲线：
+
+\\[ (0,10),(1,15),(2,23),(3,31) \\]
+
+希望从图片中提取这些坐标点，并形成：
+
+```
+Series A:
+X = [0, 1, 2, 3]
+Y = [10, 15, 23, 31]
+```
+
+这需要进一步识别：
+
+1. 坐标轴位置；
+2. 坐标轴刻度；
+3. 比例尺和单位；
+4. 曲线像素轨迹；
+5. 曲线与坐标之间的映射关系；
+6. 图例与曲线的对应关系。
+
+**MinerU 的 Chart Parsing 并不能仅凭目前公开的能力说明，就证明它可以稳定输出完整、精确的曲线数据点。**
+
+官方 Advanced 档位明确将图表解析作为视觉语言模型的分析能力，并提醒提取的数值和关系需要验证。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub+1
+
+
+
+### **第三种：将曲线还原成可编辑图形**
+
+[Graph or chart editable template, mock up. Scientific data. Suitable for economy, math, physics, chemistry, technology, etc. Several functions in one chart separated by colors. Presentation of more data.](https://images.openai.com/static-rsc-4/MbzdqBM3o0iwv8k-89l0-kskLbG5ag1zStXKakDaeU591z66rQvy6c1wbRpkllSNrJnTsNvu4UhvCyTJmi9jTHj3-DOAXf7uYLqYCeE6IK2XEhMSIwxnpjxbpF_YO9b4pn2JClzfXLPYzDTx_EdmIdEJa8NHcXZIR8oxWVsJ17v01ug1b4skq6OPoydF4p9Y?purpose=inline)
+
+这才是你真正希望实现的结果。
+
+不仅要识别出曲线，还要生成：
+
+- 可编辑的坐标轴；
+- 可编辑的刻度及文字；
+- 多条独立曲线；
+- 曲线颜色和线宽；
+- 图例及注释；
+- 数据点和坐标映射；
+- 能够导入 Word 的矢量图形或可编辑图表。
+
+这一步实际上属于图形重建，而不只是 OCR。
+
+### **我的技术判断**
+
+| 能力         | MinerU 直接提供的价值 | 是否需要其他技术     |
+| ---------- | -------------- | ------------ |
+| 图表区域检测     | 高              | 通常不需要        |
+| 图表类型识别     | 有能力            | 复杂场景需验证      |
+| 图表文字识别     | 有能力            | 需要 OCR 校验    |
+| 图例识别       | 可以尝试           | 需要关系匹配       |
+| 曲线数据点提取    | 不能保证完整精度       | 需要专用算法       |
+| 曲线坐标还原     | 不是已验证的核心能力     | 需要坐标标定       |
+| SVG 矢量重建   | 不是其主要功能        | 需要图形重建模块     |
+| Word 可编辑图表 | 不是其主要功能        | 需要 DOCX 输出模块 |
+
+所以，我不建议让 MinerU 独自承担曲线还原。
+
+但我认为它非常适合充当曲线重建之前的第一道识别入口。
+
+## **五、我认为更有价值的融合方案：MinerU + 专用算法**
+
+这里有一个重要的技术思路：
+
+**不要让一个模型同时负责识别、提取、计算、重建全部工作。**
+
+可以把整个流程分为四个相互独立的部分。
+
+## **工程文档公式与曲线重建流程**
+
+**第一层：原始文档解析**
+
+MinerU
+
+- PDF 页面解析
+- 公式区域检测
+- 图表区域检测
+- 文字和坐标定位
+
+**第二层 A：公式处理**
+
+UniMERNet
+
+- 公式识别
+- LaTeX 输出
+- 结构校验
+- 数学公式排版
+
+**第二层 B：曲线处理**
+
+专用图像算法
+
+- 坐标轴识别
+- 刻度识别
+- 曲线分离
+- 数据点提取
+
+**第三层：结构化数据与图形重建**
+
+- 公式转数学对象
+- 曲线转坐标数据
+- 生成 SVG / 原生图表
+- 恢复图例、标注和布局
+
+**第四层：GlobalCodeTrans 输出**
+
+- 翻译后的文字
+- 原始公式结构
+- 可编辑曲线图
+- Word 文档整合
+
+这里还有一个很值得研究的技术分支：
+
+### **对于 PDF 原生矢量曲线，不一定需要 AI 识别**
+
+如果原始 PDF 中的曲线本身就是矢量路径，那么可以直接提取：
+
+- 路径坐标；
+- 线段与贝塞尔曲线；
+- 颜色；
+- 线宽；
+- 填充区域；
+- 文字和图例位置。
+
+这类内容本身已经存在于 PDF 内部，不必再从图片中反推。
+
+可以研究 PyMuPDF、PDFium 等 PDF 解析工具的矢量图形提取能力。
+
+对于扫描 PDF 或截图，才需要通过 OpenCV 等图像算法识别曲线。
+
+这实际上是两条不同的技术路线：
+
+| PDF 类型    | 优先技术路线           |
+| --------- | ---------------- |
+| 原生矢量 PDF  | 直接提取矢量路径         |
+| 扫描 PDF    | 图像识别、曲线分割、坐标标定   |
+| 图片型复杂图表   | 图像算法 + 必要的视觉模型辅助 |
+| 数字表格生成的图表 | 尽可能提取原始数据        |
+
+我尤其建议保留原生矢量提取这条路线，因为它可以避免大量不必要的模型推理。
+
+## **六、能否集成到你现有的 GlobalCodeTrans？**
+
+技术上可行
+
+结合你之前的项目情况，我了解到 GlobalCodeTrans 是 Google AI Studio 开发的 React/TypeScript + Node 项目，已经有自己的 PDF/OCR 识别、内容分解、翻译、模型看板和 Word 输出流程。
+
+你此前特别强调过：不能因为引入新技术，就改变现有界面、工作流程和内部业务逻辑。
+
+因此，我建议采用**独立算法服务 + 现有程序调用**的架构。
+
+### **1. 不建议直接把 MinerU 源代码合并进 TypeScript 项目**
+
+MinerU 的主体是 Python 生态，依赖自己的模型、推理引擎和文档解析组件。
+
+如果直接将它的代码塞进原项目，可能带来：
+
+- Python 与 Node 环境依赖冲突；
+- 模型依赖体积增加；
+- GPU、CPU 推理配置复杂；
+- 原有 PDF 处理逻辑被重复实现；
+- 现有程序的维护难度上升。
+
+更好的方式是：
+
+**GlobalCodeTrans 主程序**
+
+React / TypeScript / Node.js
+
+保留现有界面、翻译流程、模型看板和文档输出
+
+本地 HTTP API / JSON
+
+**独立 Python 算法服务**
+
+**MinerU**
+
+文档解析、版面、公式、图表区域
+
+**UniMERNet**
+
+数学公式专用识别
+
+**PDF / 图像算法**
+
+矢量提取、曲线识别、坐标标定
+
+**图形重建模块**
+
+SVG、数学对象、可编辑图表
+
+这种方式的优点是：
+
+- 不需要推翻原有程序；
+- 算法模块可以独立升级；
+- 某个算法失效不会导致整个翻译程序失效；
+- 可以根据文件类型选择不同识别引擎；
+- 将来还可以接入其他开源算法。
+
+### **2. 与你现有程序的功能如何分工？**
+
+我建议这样划分：
+
+| 现有功能        | 是否保留  | 新增技术            |
+| ----------- | ----- | --------------- |
+| PDF 文件读取    | 保留    | MinerU 作为可选解析引擎 |
+| 普通文字 OCR    | 保留    | MinerU 辅助识别     |
+| 翻译及术语管理     | 完全保留  | 不改变             |
+| 数学公式识别      | 优化    | UniMERNet       |
+| KaTeX 预览    | 保留    | 改善公式输入          |
+| DOCX 数学公式输出 | 保留并优化 | 数学对象转换          |
+| 图形识别        | 优化    | MinerU + 专用算法   |
+| 曲线重建        | 新增能力  | 矢量提取 + 图像算法     |
+| Word 输出     | 保留    | 增加可编辑图形输出       |
+
+尤其要注意：你目前的程序主要通过 SVG/Canvas 预览图形，Word 输出部分图形主要转为 PNG。这意味着即使 MinerU 完成了精准识别，也还需要解决后端的矢量图形和原生数学对象输出问题。
+
+**不要把识别能力提升误认为输出能力已经同步提升。**
+
+## **七、硬件和部署是否适合？**
+
+这里需要结合你的实际电脑条件判断。
+
+我掌握的配置是：
+
+- Windows 10；
+- Ryzen 7 4700U；
+- 16GB 内存；
+- 集成显卡，显存约 512MB；
+- Python 3.13；
+- 不希望依赖 Docker、Linux 或云端 SaaS。
+
+MinerU 4.1 以后支持 Windows，并且官方已经增加 ONNX 推理加速，能够根据设备情况选择 CPU 或兼容的 GPU 执行。官方安装要求 Python 3.11–3.14，因此你的 Python 3.13 在版本范围内。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub+1
+
+
+
+但是，我不建议因此就认为你的电脑能够流畅运行全部模型。
+
+| 运行方式            | 对你的电脑的建议 |
+| --------------- | -------- |
+| MinerU CPU 基础解析 | 可以尝试     |
+| ONNX 小模型        | 值得测试     |
+| 完整 VLM 高质量解析    | 暂不建议直接部署 |
+| 高强度批量解析         | 不适合当前硬件  |
+| 仅调用独立公式识别模块     | 值得单独测试   |
+
+尤其是 Ryzen 7 4700U 的集成显卡，不能直接等同于官方所说的现代兼容 iGPU。是否能够使用有效硬件加速，需要实际检测。
+
+我的建议是：先采用 CPU 或 ONNX 的轻量运行方式，优先验证公式识别。不要为了部署 MinerU 把整个电脑的软件环境改得很复杂。
+
+### **还有一个容易忽视的问题：开源许可证**
+
+目前 MinerU 使用的是基于 Apache 2.0 并附加条件的 MinerU Open Source License；UniMERNet 仓库标注为 Apache-2.0。
+
+[image](https://www.google.com/s2/favicons?domain=https://github.com\&sz=32)
+
+GitHub+1
+
+
+
+如果你未来考虑商业化 GlobalCodeTrans，需要分别核查 MinerU 主程序、模型权重、依赖组件和二次开发代码的许可范围，不能仅凭主仓库许可证推定全部模型和依赖都具有相同授权条件。
+
+## **八、我建议进行一次小规模、真实文件的专项测试**
+
+目前不应该直接要求 AI Studio 把 MinerU 集成进你的程序。
+
+我更倾向于先建立独立验证项目，确认技术价值后再考虑接入。
+
+### **第一组：数学公式识别测试**
+
+[How can I use formulas in MC34063 DC-DC converter datasheet? - Electrical Engineering Stack Exchange](https://images.openai.com/static-rsc-4/PR0jCZtRrEepcgqI6WsywO9mIWEQFvfqouWtksgqTIaYeeSV4DLQWEpq6Z9gRg9zm6ca3RBnTiQhDhuloZnLRsWhOe2PsCNRjsWf-x-Jf_1XY8TKoAhp8Dp-3li3t4ZDhUneIS8WG51MBHI7ySbUP2o_RYFmR3Qk5p4i4Uo_Cqo?purpose=inline)
+
+[Solved Q3). The elementary, gas-phase reaction (25 Points) | Chegg.com](https://images.openai.com/static-rsc-4/crJS0DE2wkZ4HMC4KkyVuEEDYZ1onGK1CDNdgZJuVkPJJXVqf8obWuJKo6n8MQJXNLyX8Xt9jFmh97ylq-NEeKeplNb97g8dY69DWDqEzgwa438uap-tCgztOKNSksTnePyTUs6k6SYbrQzPNeq23fzbb5kSMS-dwG59-yv7SYU?purpose=inline)
+
+[STIFFNESS MATRIX METHOD Element and global stiffness matrices](https://images.openai.com/static-rsc-4/LHdRqyOUGZaRDed71yKKGi_6Ni_1y8nDgx_1-MnT_dJP258zWHeI6mflGQmIy78THwqAH0hVrk4W0Xl4mfC7RxWNuy9iV7m5VRfR-w1EI8GOCGG79tHiplmtL-ZOUq8cQTx474k4vi8yek7gHm-kT0YniPoCUkI3M6OHrrS5Fas?purpose=inline)
+
+9
+
+重点测试：
+
+1. 普通数学公式；
+2. 多层分数与根号；
+3. 矩阵及行列式；
+4. 积分、求和、极限；
+5. 上下标密集公式；
+6. 化工及工程专业公式；
+7. 中英文混合公式；
+8. 扫描件中的模糊公式。
+
+验收不能只看识别出来的 LaTeX 是否能够渲染，还要对照原图检查每一个符号、上下标和结构。
+
+### **第二组：曲线和图表测试**
+
+[Beam Loss Monitors at LHC - CERN Document Server](https://images.openai.com/static-rsc-4/Jps6CmoQwi1lea03CnQkOR7T6ojvlasAd8xLAoHiMLlxHRGmAidSdjfYJ1ZSilwgvfIte9L4VQ1FMNMB0rBEOIywTAXRWB_3TLQ81zp5wXftZtw2u-qRF8Bo5ZNnWz7ylVX0Thl_mLjjL1FClCceSxi6lZTRI9ouFeeKtXKBDeM?purpose=inline)
+
+[Unified Friction Formulation from Laminar to Fully Rough Turbulent Flow](https://images.openai.com/static-rsc-4/WaiBb-g63qKprSHMeA4S8VC2S1gIbIFE8rLUXmsrF61HI3bZqpoDGY10ghXuwUUBBx-j6v6V6P6VeUzVrg5lMuAfP6i1gr5WVSfY_kuLSr1SwPw_K-pup8cvQb26iB4Dg1GUInKGKKmE_NiRdiE5mHv_356_694qVSm30kIu3z0?purpose=inline)
+
+[Gráfico Esfuerzo-Deformación: Clave para entender y optimizar el comportamiento del concreto](https://images.openai.com/static-rsc-4/RedvQghiEhrsl2emERmFtiHkF3gRVoaps8vfIY_D5EzLmOWks-88m5h2URqsMFK6nMA1VesQDapJXzFoWTazgM4xWee756xZWwxJ94-mbpzqbZzhAm7aq9oIWKjo15ba4S4AmTL9PqGatrsE8Ps3L0UOEdtg3MMoq0ltN-iC9Jg?purpose=inline)
+
+12
+
+测试：
+
+- 单条曲线；
+- 多条交叉曲线；
+- 双坐标轴；
+- 对数坐标；
+- 密集网格；
+- 虚线、点线；
+- 曲线与文字重叠；
+- 扫描模糊图表。
+
+重点记录四个结果：
+
+1. 是否识别出全部曲线；
+2. 是否准确识别坐标轴、刻度及单位；
+3. 数据点提取误差是多少；
+4. 是否可以重建为可编辑的 SVG 或原生图表。
+
+### **第三组：完整工程文件测试**
+
+挑选真实的工程规范、设计说明书、技术报告、化工标准等 PDF 文件。
+
+比较三种路线：
+
+| 测试路线               | 目的       |
+| ------------------ | -------- |
+| 现有 GlobalCodeTrans | 建立基准     |
+| MinerU 独立解析        | 测试新引擎能力  |
+| MinerU + 专用算法      | 测试融合后的提升 |
+
+尤其要记录：
+
+- 识别准确率；
+- 公式结构正确率；
+- 图表重建误差；
+- 处理速度；
+- CPU、内存占用；
+- 是否需要人工修正。
+
+这样才能知道究竟是 MinerU 提升了能力，还是增加了一套复杂但没有实际收益的依赖。
+
+## **九、最终技术决策**
+
+我把这次研究的结论归纳为四项：
+
+| 技术方向           | 我的判断       | 建议     |
+| -------------- | ---------- | ------ |
+| MinerU 文档解析    | 成熟度较高      | 值得引入测试 |
+| UniMERNet 公式识别 | 非常有价值      | 优先专项测试 |
+| MinerU 图表分析    | 有潜力但能力边界不同 | 作为辅助识别 |
+| 专用曲线提取与重建      | 需要独立技术路线   | 建议重点研发 |
+
+**我最看重的其实不是 MinerU 整个项目，而是它背后可以拆分、独立使用的专业识别能力。**
+
+这与你之前探索的技术路线是一致的：让专用算法承担能够确定性完成的工作，把大模型留给复杂语义理解、疑难判断和必要的辅助修正。
+
+### **我还有一个进一步的建议**
+
+不要把这次研究局限于 MinerU。
+
+可以把 GlobalCodeTrans 的公式、图形、表格识别逐步发展成一个独立的专业内容重建模块：
+
+- 文字：OCR；
+- 公式：UniMERNet 等数学专用识别模型；
+- 表格：结构化表格识别；
+- 曲线：矢量路径提取与图像算法；
+- 流程图：节点、边、箭头和拓扑结构识别；
+- 输出：DOCX 数学对象、SVG 和原生可编辑图表。
+
+这样形成的不是一个简单的 PDF 翻译软件，而是一套面向工程规范、技术文件和专业资料的**多模态内容识别与精准重建引擎**。
+
+## **十、下一步我建议怎么做？**
+
+我建议暂时不要编写集成提示词，先确定测试优先级。
+
+**确定下一阶段技术验证方向**
+
+**1. 首先验证什么？**
+
+优先公式识别，验证 UniMERNet 与 MinerU
+
+优先曲线提取，研究专用图形算法
+
+两条路线并行，建立独立测试程序（我的建议）
+
+**2. 测试程序采用什么部署方式？**
+
+Windows 本地独立运行，不改动 GlobalCodeTrans
+
+直接在 GlobalCodeTrans 内增加隔离测试模块
+
+按此方案继续论证
+
+我的倾向是先独立测试，再决定是否集成。**没有经过真实样本验证的算法，不应该因为它来自一个高星级、高评分的开源项目，就直接进入你的正式程序。**
+
+
+调整策略：假如我只用于复现重建+指定目标语言翻译，在google ai studio平台部署，充分利用高额免费额度进行测试和使用，成果主要表达在word中（markdown承载不了）那么各种公式+工程曲线+其他曲线/柱状图/饼图+各个位置不同形态的标注，采用什么形式最合适？代码模拟图片？html然后手工截图（太复杂且不利于连续输出）？PDF（不能二次排版和纠错）？真实图片或矢量图？真实公式或word原生公式技术（我不知道叫什么名字）？等等
+第一步核心难度：识别，第二部：复现重构，我倾向于尽量少的调用大模型，最好用算法或硬编码实现，第三步：精确导入word不散架不变形
+
+你的建议呢？
+
+
+我的建议是：**不要在“图片、HTML、PDF、矢量图、Word 原生对象”中选一种作为统一输出格式，而应采用“识别结果结构化 → 按对象类型重建 → 分层写入 Word”的混合技术路线。**
+
+你的目标不是把 PDF 页面原样截图放进 Word，而是让 Word 中的内容尽可能接近原件，同时具备二次排版、修改、纠错和局部替换的能力。
+
+我认为应该把技术路线明确分成三个独立环节：
+
+1. **识别：** 尽可能准确地识别公式、曲线、图表、标注及其相互关系。
+2. **重建：** 将识别结果转换成可编辑、可定位、可复现的结构化对象，尽量由算法完成。
+3. **Word 写入：** 根据对象类型选择最合适的 Word 原生对象或矢量、位图载体，保证位置、比例、字体、线宽和布局稳定。
+
+这三个环节不能混为一谈。比如，公式识别出正确的 LaTeX，不代表已经生成了 Word 原生公式；曲线提取出正确的坐标点，也不代表 Word 中已经生成了可编辑图表。
+
+下面是我建议的整体方案。
+
+## **一、先确定最终成果的对象形式**
+
+我建议建立一套混合输出体系，而不是所有内容都转成图片。
+
+| 内容类型        | 首选重建形式          | Word 中的最终形式        | 是否便于二次修改 |
+| ----------- | --------------- | ------------------ | -------- |
+| 数学公式        | LaTeX / 数学表达式结构 | Word 原生公式（OMML）    | 高        |
+| 化学、工程公式     | 结构化公式表达式        | OMML，必要时矢量图        | 较高       |
+| 折线图、柱状图、饼图  | 数据表＋图表配置        | Word 原生图表          | 高        |
+| 工程曲线、函数曲线   | 坐标点＋曲线几何        | 原生图表或矢量图           | 视类型而定    |
+| 流程图、结构图     | 节点、连线、布局结构      | Word 原生形状或 SVG/EMF | 视实现而定    |
+| 尺寸线、箭头、引出线  | 几何坐标＋标注属性       | Word 原生形状          | 高        |
+| 文字框、气泡、编号标注 | 文字＋位置＋样式        | Word 文本框或形状        | 高        |
+| 复杂示意图、照片    | 原图或局部图像         | PNG/JPEG           | 低        |
+| 无法可靠重建的复杂图形 | 原始图像保真          | 图片                 | 低        |
+
+这里有几个重要概念。
+
+**第一，Word 原生公式。**
+
+你说的“真实公式”通常称为 Word 原生数学公式，底层格式叫 **OMML（Office Math Markup Language）**。它不是把公式截图放进 Word，而是将上下标、分式、根号、矩阵、积分符号等保存为数学结构。
+
+例如：
+
+- 分式是分子、分母结构；
+- 上下标是独立的数学节点；
+- 根号是根式结构；
+- 矩阵是行列结构。
+
+因此，公式可以像普通 Word 公式一样修改，而不是只能更换图片。
+
+**第二，Word 原生图表。**
+
+柱状图、折线图、饼图等，如果能够识别出数据系列、坐标轴和数据点，最好还原为 Word 原生图表。底层是 Office Open XML 图表部件，通常还包含一份嵌入式 Excel 数据工作簿。
+
+它比截图更有价值：可以改数据、改标题、改图例、改颜色，也能调整坐标轴。
+
+**第三，矢量图不等于原生可编辑对象。**
+
+SVG、EMF 都可以在 Word 中以较好的清晰度缩放，不容易像位图那样放大失真。但它们与 Word 原生图表、原生形状不是一回事。
+
+- SVG：适合保留复杂的矢量线条、曲线、箭头和图形组合。
+- EMF：适合部分 Office/Windows 矢量图形兼容场景，但转换过程可能改变字体和图形细节。
+- Word 原生形状：适合需要在 Word 内逐个移动、调整的简单图形和标注。
+
+**第四，真实图片并非落后的方案。**
+
+对于照片、复杂扫描示意图、纹理丰富的图形，原始图片或高质量修复后的图片往往比强行矢量化更可靠。关键是不要把本来可以结构化的公式和图表也全部做成图片。
+
+## **二、不同内容应该采用什么识别与重建技术？**
+
+这是整个项目最关键的设计问题。我建议按照对象类型分别处理，不要让一个大模型承担所有识别任务。
+
+### **1. 数学公式：识别成 LaTeX，重建成 OMML**
+
+优先采用结构化识别与原生公式输出
+
+[React App](https://images.openai.com/static-rsc-4/h6xGmCbNYQdpbLGEG6MJvdnqFeSvZ5BQckmqNZ_POF3z_Zagxw1RFxpPU1ZmlAHJSoX91rIkgUXAArBoZsseVLvJLgog7O4JKj-Ga4HxQ4rOwpnp4m0j8w3O-Z3CfoEI8yb85sHUjz0cuHWmXN89G_EnMij8kN2FKzmgI9wpNh8?purpose=inline)
+
+[How do you typeset an equation with an integral symbol that only has a subscript in Word? - Microsoft Q&A](https://images.openai.com/static-rsc-4/r2kBlZw_ejBBytTc81I882Ea45SOdMSSsf4aPJ0e8OJIxxEAqzFg1x86lRId5qbZzfk2RZxWeDcL8pPRDv_RRCyJmxas7M5Cp0MHnXU2VaTkKhx0314zeEsehECT9txzzVHtK4Ksl4mbbuubU1PEGeopHg-lwQkqQFF2zY7kjso?purpose=inline)
+
+[Since the format of the formulas inside OOXML is OMML, can you recommend a way to transform those to MathML (which is the standard for HTML)? | EASA](https://images.openai.com/static-rsc-4/8V60DSfsQh07uqVwZVu1EwvIOYzMrEOdRlVErcRx5mZ15ZLsgwDyp7eAXg4bYIU3xTxgsXE4vpyZ8rEjjK6snBbtp_nRRRZVLlZ90fsXLzGyJxGZDvLqJ3zr_NN5LMPr5YqmcPYhU_CYZ7OYBYQKkBND1uEYHoA5ECwbCQk_-PY?purpose=inline)
+
+7
+
+推荐流程：
+
+```
+PDF页面 / 图片
+    ↓
+公式区域检测
+    ↓
+公式图像裁剪
+    ↓
+公式识别模型（如 UniMERNet）
+    ↓
+LaTeX 公式字符串
+    ↓
+公式语法检查与结构校验
+    ↓
+LaTeX → OMML 转换
+    ↓
+写入 Word 原生公式
+```
+
+这里需要特别强调：
+
+- MinerU 可以承担文档解析、公式区域定位等工作。
+- UniMERNet 可以作为专门的公式图像识别模块。
+- LaTeX 是识别和中间表达格式，不应该作为最终 Word 交付形式。
+- OMML 才是 Word 原生公式的目标格式。
+
+**不要让大模型逐个公式重新编写 LaTeX。** 这既消耗调用额度，也会引入不必要的语义改写风险。
+
+建议算法负责公式语法检查、结构转换和输出；只有识别失败、公式存在歧义时，才调用大模型辅助判断。
+
+对于化学结构式、复杂反应式、带有特殊工程符号的公式，不能默认普通数学公式识别器都能正确处理。应当单独测试。
+
+### **2. 柱状图、折线图、饼图：尽量恢复成真实图表**
+
+优先恢复数据与图表结构
+
+[Design of the high-speed cam profile for the multi-DOF follower - Jiawei Han, Jie Huang, Chenyu Qi, 2024](https://images.openai.com/static-rsc-4/uGRhAeU7QUXfdS5BvUYjwbTTf6Wo_7iCGHEW6XNJ8Fm8ehkEw-3ZJ7aSpZZKYp7T-1s77rlp5ZUBaPb_qYbJEiYu8i_98OloCfdcERnLL3hZUjoEptYaMGokbXCOO-7NRc8L6rJniOUD49Bb3aVnvxKurJTvb2scquUCWy1CoiI?purpose=inline)
+
+[Gráficos de columnas, barras y combinados – Centro de asistencia](https://images.openai.com/static-rsc-4/7aFYfADwKSsZU1KKeM4g9kP6OzUWjL46m4EXvPKB5dmES3QY46L0RUF4Lpzgh9lJs78CwL32NAw9e9Znf-tthha8qFKyA7ol2NMjFhiVCXCOwJQgKzEw7PPUhGZ6yLfUSWPjyy2hA3beLrNWL4X3Zd5PZYkeKeey4J0Pf0F8OHA?purpose=inline)
+
+[How to Creatively Make a Pie Chart Online | EdrawMax Online](https://images.openai.com/static-rsc-4/0Sy8CBfLX_IIQHT-ogOJoFGZTRvRf3eUkIlRWYnXvv7-nBBrwIlTu0VI1YUEdE48od90I7jitqKtLLQj2ZTBErCP4VdaDVRwd4roPUVOfx1Wm5kbyv6OB3UjGzW_P_YjsC-Gq1iunyEy1GSxTUEXyyh-Qp4jRJMOXHAjVk1SGuE?purpose=inline)
+
+9
+
+这一类图形不应该优先采用代码模拟图片，也不应该通过 HTML 截图。
+
+我建议按以下流程处理：
+
+```
+图表区域识别
+    ↓
+图表类型判断
+    ↓
+坐标轴、刻度、单位识别
+    ↓
+图例、数据系列识别
+    ↓
+数据点提取 / 数据表恢复
+    ↓
+图表结构重建
+    ↓
+Word 原生图表
+```
+
+比如原图是一张三条曲线的折线图，识别后形成：
+
+- X 轴：时间；
+- Y 轴：压力；
+- 系列 A：设备 1；
+- 系列 B：设备 2；
+- 系列 C：设备 3；
+- 每个系列包含一组坐标点；
+- 另有坐标轴范围、单位、颜色、线型、图例位置等配置。
+
+如果这些信息恢复准确，就可以生成真正的 Word 折线图。
+
+它有几个优势：
+
+1. 后期可以修改数据。
+2. 可以改变坐标轴范围和刻度。
+3. 可以增加或删除曲线。
+4. 可以调整颜色、图例、标题。
+5. Word 中不会因为图片压缩而损失线条清晰度。
+
+但这里存在一个关键限制：**从图片反推数据点，不等于恢复了原始数据。**
+
+例如原图中一条曲线有 500 个像素位置，算法可以通过坐标轴标定反算出近似坐标，但这仍然是图像反算值，不是原始实验数据。
+
+因此必须区分：
+
+- 原始数据提取；
+- 图像反算数据；
+- 人工补录数据；
+- 模型推测数据。
+
+这几类数据不能混在一起，更不能把反算结果包装成原始精确数据。
+
+### **3. 工程曲线：不能简单等同于普通折线图**
+
+需要单独设计算法模块
+
+[PPT - 工地主任班學長 PowerPoint Presentation, free download - ID:5976835](https://images.openai.com/static-rsc-4/vB6KTh73iKNVlm_qIrz4PlDdqD6mZPMyidB_YO9G3E-_fRI3tyqpkm0igzMOh85S42UHJzAhpmmu2InAhVHusyGumrWQbgTdnsxSAHLkXLDnVNTWbhVENWTYNKXicnUSGudV5VYqC3biH3h7dtVi_mlaTLxV_0e4rgENMac9JtA?purpose=inline)
+
+[Engineering Drawing: Tangency problem 03](https://images.openai.com/static-rsc-4/yx7DCPEYncRjoUVBbrJUC6H21MtpAEf81HW28FszfN_V4xFrkTvfFdbJ5x0KnyY6iiXgkMPRa5tgjkNOWEyA-UEz5hMP1zQnVN6K8N8zsyVI6WDUKjbJq4Z4WyYFCd1bMERO4rdxMr5EIGA19wkxhBY7qMAL-FNApAugD-bAJbI?purpose=inline)
+
+[340 Watt motorhome camping solar system 12 Volt SET - waerchzueg.ch](https://images.openai.com/static-rsc-4/YeNo2dmWZimY6CZDyb-nDkL5ejvL8w3s2vwc5No3LMW_PEVBhykEblW1J_jD5JMq1FurmmF5Sf-HFlfBq-ScUrcu2FoSfyI-QRHsXatJlw07BqNcHII7O55caJNMFCdwCNxEGsLQT6v-JafgYRBxBKk-Kql_YH17qSiIUTHhrl8?purpose=inline)
+
+9
+
+工程曲线可能包括：
+
+- 道路纵断面、横断面；
+- 地形等高线；
+- 管道、线路、设备的几何曲线；
+- 应力、应变、荷载、位移曲线；
+- 设计曲线、拟合曲线；
+- 带有尺寸、标高、桩号、引线和文字说明的组合图。
+
+这类内容有时是数据图表，有时是几何图形，有时两者混合。
+
+我建议采用双路线。
+
+**路线 A：有坐标轴、有数据含义的曲线**
+
+优先提取：
+
+- 坐标轴；
+- 刻度；
+- 单位；
+- 曲线像素轨迹；
+- 曲线分支；
+- 图例；
+- 数据点。
+
+再反算坐标，生成 Word 原生图表。
+
+**路线 B：没有标准坐标轴的工程几何曲线**
+
+优先提取：
+
+- 线段；
+- 圆弧；
+- 贝塞尔曲线；
+- 多段线；
+- 箭头；
+- 连接关系；
+- 标注位置。
+
+再生成 SVG 或 EMF，必要时进一步转成 Word 原生形状。
+
+尤其值得注意的是：如果 PDF 本身包含真实矢量路径，就应该优先直接提取 PDF 内的路径和文字对象，而不是先把 PDF 转成图片，再用图像识别重新识别。
+
+这是一条非常重要的技术原则：
+
+**原件有结构数据，就直接提取结构数据；只有原件缺少结构数据，才使用图像算法反算。**
+
+### **4. 各种标注：尽量还原成独立对象**
+
+[Dimensioning Lines at Jamie Spinelli blog](https://images.openai.com/static-rsc-4/D46NGvejQqRj5i2G1SifhDQJy79YPVS1f0uVA4cTFJkzpUkjKKZnd4-OK9-wCi93Q39a0fCf52Cl2v2-zrtHW2f6RhL6PPlRA35YxVsPUCUtHxmztuvuu2cYeCOXU0yqybZ84zwVxSJmtG8fzmnMqaMRptb-HM7_emMDR0oRIzA?purpose=inline)
+
+[Parts list like in inventor? - Pro - SketchUp Community](https://images.openai.com/static-rsc-4/9ko4LcI0ej4aSUUi6NUF51tT9Uyo7SqCvpg6izDVumOBSkRLIBDgHcAdX9bTVGd6NR381eFj3IV6KbrRfxtV8rB3GX0myS8REl0ft09teESK7ISCyCtfRG6wwuj8NahSviEFi6C9ctFmQQQfHf9GL0anZ1Var6APOVuSxe-9S9w?purpose=inline)
+
+[PPT - Engineering Graphics 1504 Lecture 2 – Orthographic Sketches PowerPoint Presentation - ID:17640](https://images.openai.com/static-rsc-4/LB74O197IH02DpN0UPnnUehlmCrirGV93jyTBDlGnPjum0KBxO5RT_9TUG1RebdaeV3MK4tr713NsRl_1AavgcE1WAnEq12-UOgzdmjuk9cD8JPt4VBaVZ9FIeDBrh29R00nXrd8RNuog1HHr6diS4DFfgz-gVocD0QdaWWCv6c?purpose=inline)
+
+10
+
+你特别提到的“各个位置不同形态的标注”，我认为是需要单独开发的能力，不能只依赖 OCR。
+
+至少应该识别以下对象：
+
+| 标注类型   | 应提取的信息       | 推荐 Word 表达 |
+| ------ | ------------ | ---------- |
+| 普通文字   | 内容、位置、字体、方向  | 文本框或段落     |
+| 数字编号   | 编号、位置、样式     | 文本框或形状     |
+| 箭头     | 起点、终点、箭头方向   | 原生线条       |
+| 引出线    | 折点、连接对象、文字位置 | 原生连接线      |
+| 尺寸线    | 两端点、尺寸值、箭头样式 | 原生线条＋文字    |
+| 虚线     | 路径、线型、间距     | 原生线条或矢量路径  |
+| 圆圈、矩形框 | 几何范围、边框、填充   | 原生形状       |
+| 剖面线    | 方向、间距、区域范围   | 矢量图形       |
+| 文字气泡   | 内容、边框、指向位置   | 文本框或组合图形   |
+
+这里我建议采用一个统一的内部对象模型。
+
+例如一个尺寸标注，不要只识别成一张图片，而是识别成：
+
+```
+{
+  "type": "dimension",
+  "start": [120, 250],
+  "end": [320, 250],
+  "value": "2000",
+  "unit": "mm",
+  "line_style": "solid",
+  "arrow_style": "both_ends",
+  "text_position": "above"
+}
+```
+
+这只是一个示意结构，不是要求程序硬编码这组坐标或标注内容。
+
+真实程序应该把这类结构作为通用对象，由识别模块产生，由重建模块解释，再交给 Word 输出模块。
+
+这样才能实现同一套标注算法处理不同项目、不同图纸和不同语言的文件。
+
+## **三、我不建议采用的几种方案**
+
+| 方案               | 我的判断      | 主要问题                             |
+| ---------------- | --------- | -------------------------------- |
+| HTML 页面截图        | 不推荐       | 截图不便二次编辑，页面布局和 Word 排版容易不一致      |
+| Canvas 模拟全部图形    | 不推荐作为最终输出 | 可以绘制，但大部分结果仍然是位图                 |
+| 所有对象都转 PNG       | 不推荐       | 清晰度、编辑能力、缩放质量受限                  |
+| 所有对象都转 SVG       | 不推荐       | 矢量清晰，但不等于 Word 原生可编辑；复杂对象仍需识别和重建 |
+| 所有对象都转 PDF       | 不推荐       | 适合固定版式交付，不适合作为 Word 中间对象         |
+| 全部由大模型生成         | 不推荐       | 调用成本高、结果不稳定、坐标和细节难以保证            |
+| 所有对象都转 Word 原生形状 | 不推荐       | 复杂图形的 OOXML 构造和布局难度较高，容易出现兼容性问题  |
+
+特别说明一下：Canvas、HTML、SVG 并不是不能使用。
+
+它们完全可以作为内部绘图、算法调试和矢量生成工具。但**不能把浏览器截图作为默认的 Word 交付方式**。
+
+## **四、真正适合你的技术架构**
+
+我建议采用“一个统一识别入口＋多个专用重建器＋一个 Word 输出引擎”。
+
+**输入层**
+
+PDF / 图片 / 扫描件 / 原生矢量 PDF
+
+**第一层：识别与解析**
+
+**文档解析**
+
+版面、文字、区域定位
+
+**公式识别**
+
+公式区域、LaTeX
+
+**图表识别**
+
+轴、图例、数据系列
+
+**图形识别**
+
+曲线、线段、标注、拓扑
+
+**第二层：统一结构化中间层**
+
+保留识别结果、坐标、对象类型、相互关系、来源和置信度
+
+公式 AST / LaTeX
+
+图表数据结构
+
+几何路径结构
+
+标注对象结构
+
+**第三层：专用重建器**
+
+- 公式重建器：LaTeX → OMML
+- 图表重建器：数据结构 → Word 原生图表
+- 几何重建器：路径 → Word 形状 / SVG / EMF
+- 标注重建器：标注结构 → Word 文本框 / 连接线 / 形状
+- 图像保真模块：复杂原图 → 高质量图片
+
+**第四层：Word 输出引擎**
+
+# **DOCX / OOXML**
+
+对象定位、锚定、尺寸、字体、分页、兼容性检查
+
+这套架构的核心是：**识别和重建之间必须有一个独立的结构化中间层。**
+
+它是整套程序的“中枢”。
+
+如果未来更换 MinerU、公式识别器、曲线提取算法，不需要推翻 Word 输出模块；如果更换 Word 输出实现，也不需要重新识别原始 PDF。
+
+这比把某一个开源项目整体塞进 GlobalCodeTrans 更容易控制，也更适合长期迭代。
+
+## **五、如何最大限度减少大模型调用？**
+
+我认为这应该是你的核心设计原则：**大模型负责理解，算法负责测量，程序负责重建。**
+
+具体可以这样分工：
+
+| 工作内容       | 推荐执行方式            | 是否需要大模型              |
+| ---------- | ----------------- | -------------------- |
+| PDF 页面解析   | MinerU / PDF 解析工具 | 通常不需要                |
+| 文字 OCR     | OCR 算法            | 通常不需要                |
+| 公式区域检测     | 目标检测 / 版面算法       | 通常不需要                |
+| 公式转 LaTeX  | 专用公式识别模型          | 需要专用模型推理，但不一定需要通用大模型 |
+| 坐标轴、刻度识别   | OCR＋图像算法          | 通常不需要                |
+| 曲线像素提取     | OpenCV 等算法        | 不需要                  |
+| PDF 矢量路径提取 | PDF 底层解析          | 不需要                  |
+| 图表结构重建     | 硬编码规则＋图表库         | 不需要                  |
+| 标注位置和形态提取  | 几何算法＋OCR          | 通常不需要                |
+| 目标语言翻译     | 通用大模型             | 需要                   |
+| 疑难对象判断     | 通用大模型辅助           | 按需调用                 |
+| Word 生成    | OOXML 程序          | 不需要                  |
+| 输出检查       | 程序校验＋渲染对比         | 通常不需要                |
+
+这里还有一个重要区别：
+
+**专用视觉识别模型不等于通用大语言模型。**
+
+例如 UniMERNet 虽然也是模型，但它承担的是专门的公式图像识别任务。它的调用不应该和每一段文本翻译都混在一起。
+
+我建议整个程序采用以下调用策略：
+
+1. 先由算法识别所有对象。
+2. 能确定的对象直接重建。
+3. 低置信度对象进入疑难队列。
+4. 只有疑难对象才调用视觉模型或大模型。
+5. 翻译时只翻译需要翻译的文本，公式、坐标、数值、图形结构原则上不交给翻译模型改写。
+6. 生成 Word 后自动检查结构和页面渲染结果。
+
+尤其要防止翻译模型擅自修改公式、数字、单位、工程符号、图例编号和尺寸标注。
+
+建议为每个识别对象保留原文、译文、对象类型、坐标、置信度和来源。这样发生错误时，可以追溯是识别错误、翻译错误，还是重建错误。
+
+## **六、Word 输出稳定性：这是容易被低估的难点**
+
+你提出的第三个要求——精准导入 Word、不散架、不变形——我认为不能仅靠生成 DOCX 文件来验收。
+
+Word 文档内部使用 OOXML，公式、图表、形状、图片和文本框实际上属于不同的对象体系。
+
+即使 DOCX 能成功生成，也不代表它在不同 Office 版本、不同字体环境、不同分页条件下都能正确显示。
+
+我建议特别控制以下问题：
+
+| 风险        | 解决方法                     |
+| --------- | ------------------------ |
+| 公式字体变化    | 使用兼容的数学字体及原生公式结构         |
+| 图表尺寸变化    | 固定图表尺寸、坐标轴和图例布局          |
+| SVG 无法显示  | 提供 PNG 回退图，检查 Office 兼容性 |
+| 图片漂移      | 采用固定锚定和明确的环绕方式           |
+| 标注与曲线分离   | 尽可能组合对象，或使用统一矢量画布        |
+| 分页导致图形跑位  | 对图形对象设置合适的锚定和段落属性        |
+| 字体替换      | 检查目标环境字体，必要时采用兼容字体       |
+| 图形缩放变形    | 保持宽高比，统一坐标变换             |
+| 表格和图形互相挤压 | 对复杂图形设置独立段落和固定布局         |
+
+另外，Word 原生图表、原生公式、原生形状的生成难度差别很大。
+
+不能假设一个普通的 DOCX 生成库已经完整支持这些对象。特别是 OMML 公式、复杂 DrawingML 形状和图表部件，可能需要直接生成或修改 OOXML XML 部件，并正确维护文档关系、资源引用和命名空间。
+
+**我建议把 Word 输出引擎作为一个独立技术模块，而不是在主程序中零散地拼接各种图片和 XML。**
+
+### **一个必须建立的验收标准**
+
+不能只检查“DOCX 是否生成成功”，至少要检查：
+
+- DOCX 是否可以正常打开；
+- 公式是否仍然是原生公式；
+- 图表是否仍然可以编辑数据；
+- SVG、EMF 是否正常显示；
+- 标注是否与对应图形保持位置关系；
+- 页面是否出现裁切、重叠、错位；
+- 输出文件重新打开后是否保持一致。
+
+最好采用“DOCX 结构检查＋LibreOffice 或 Microsoft Word 渲染检查”的双重验收。LibreOffice 可作为自动化检查工具，但不能完全替代 Microsoft Word 的最终兼容性测试。
+
+## **七、结合 Google AI Studio，我建议这样落地**
+
+这里有一个实际部署问题：Google AI Studio 生成和部署的 Web 应用，并不意味着它自动具备任意 Python 环境、OpenCV、MinerU、PDF 底层库和所有系统依赖。
+
+所以不建议一开始就把所有识别算法都放到 AI Studio 的 Web 服务中。
+
+可以采用以下分工：
+
+**Google AI Studio：主程序**
+
+- 用户操作界面
+- 文件管理和任务流程
+- 目标语言翻译
+- 疑难对象辅助判断
+- 识别结果人工修正
+- DOCX 输出任务管理
+
+**独立算法模块：识别与重建**
+
+- MinerU 文档解析
+- UniMERNet 公式识别
+- PDF 矢量路径提取
+- OpenCV 曲线、图形、标注提取
+- OMML、图表、SVG/EMF 重建
+
+**文件交付模块**
+
+- DOCX 生成
+- 页面渲染检查
+- 结构完整性检查
+- 识别错误和重建错误记录
+
+这里的“独立算法模块”可以先作为一个单独的 Python 程序或服务，主程序通过接口调用。是否能够部署在 Google AI Studio 对应的运行环境中，需要根据实际运行环境、依赖、内存和执行时间验证，不能预先假定。
+
+这样做有两个好处：
+
+- AI Studio 的免费模型额度主要用于翻译和少量疑难识别，不会被大量重复的图形处理消耗。
+- 以后更换算法、模型、图表库，不需要重新设计主程序。
+
+## **八、我的实施优先级：不要同时攻克所有对象**
+
+如果一开始就要求公式、工程曲线、柱状图、饼图、流程图、所有标注全部实现，很容易造成项目范围膨胀，最终每一种都能演示，但没有一种达到工程使用标准。
+
+我建议分三批实施。
+
+**第一批：公式＋普通图表**
+
+最高优先级
+
+[Working with Line Charts](https://images.openai.com/static-rsc-4/yraOAvpQvPq8P1hIPIms4Xh0YV6VpyL5cAOXI9R34tQBOUfM-HCW-fzSMLRV7bGApQP05HIDfZw1pnk8L5U-F_UFm1O4RzYj1xIOyuWhCnzdrNzeOZTJIEG9H2s3RFdIG30E5AxDpbc5TjGjUHCWn3NnaZubcKIxeKIsLWrqq9E?purpose=inline)
+
+[Export Presentation – LexisNexis Intellectual Property Solutions](https://images.openai.com/static-rsc-4/fv93HWzwuKOA6Ithbr2d-fY1vLFsP5yDuT1u2D3x2AswU4IhsQ80bx66-fGTJMUXPhDUlbI1HddlXkGsWLz_ukmM4J9PG1tJ6JknD7QU_Eick2bFUBgcvkiUUDMsAbQa7rPy0I74xNqjtulxuWVUuQWMeSzrgt6tjz2vq9Z_ncc?purpose=inline)
+
+[Handbook of Mathematical Functions With Formulas, Graphs, and Mathematical Tables -  Page 12 - UNT Digital Library](https://images.openai.com/static-rsc-4/gz-6iXWVW17tveooVMIcV4vkS3XmZcN-9uJbNM8RDCyxH_cKxnE5B4sysJqkG37RRCR1NYGiIvhYODnHM75ku4QOGPRbHHfLTBrmn4cvhR6GvY1HKWqNMPI6HVv0ilVVwSssqSWN7ILzm66gZbl_u4BANWm_jfeBB1bf8mnIluE?purpose=inline)
+
+7
+
+- 数学公式识别、LaTeX 转 OMML。
+- 折线图、柱状图、饼图的数据恢复。
+- Word 原生公式和原生图表输出。
+- 这是最适合先验证技术路线的一批。
+
+**第二批：工程曲线＋几何图形**
+
+重点攻关
+
+[종단면도 보는 법](https://images.openai.com/static-rsc-4/eKa-E9YTvZTCb3I7PFbjFpyM-2qdOjbdDSBeY5dFaA3YgZNzgxeRQFT_MUft5bSrkfD1r-mSUToyDhzt_w7vAj_Q6D1EHmehYB3fDya-5SqYnkX9I3Mfmvmqb8gm44MjLBjkluUf-r-c_Qp-nmmDJJZeVA3nHtZ1a-trvD_eKnY?purpose=inline)
+
+[Построение профиля трассы - Геодезия в маркшейдерском деле](https://images.openai.com/static-rsc-4/SZSOWQvSs0fRP-Eovx6AhydbFqTksqKWILgBkDj2RxL-0uXo2b1CaUuhC4f8QuOInW9wXjTsKDHMPogjO9ub_MgTPcNII3UpZcuBrsG4k8_h7kOJ-PD5sehMhXgMwTwiSHJaFgGHMMd5IiI1rQIFhdvQDhIhTTIkJpfRCekUySI?purpose=inline)
+
+[Draw Reverse or Ogee Curve | ClipArt ETC](https://images.openai.com/static-rsc-4/3gYm_zzbAFm-dZET--nurOeJgDxkCH11Kd_eS_-W6s7a9IoQRNDG2rcMPk7YjQ21Fh3Kr3kT9Wi-F2hpT2zqw4wAPw4zGZh0PZmJO4E-kDObTefjpv7sMCcxSqWKIv5weaaHuAPHySyuSbacYMOw0yACRmQGuHIoBKgx7RU4Qrg?purpose=inline)
+
+8
+
+- PDF 原生矢量路径提取。
+- 扫描图像曲线提取。
+- 坐标轴反算和曲线重建。
+- SVG/EMF 或 Word 原生形状输出。
+
+**第三批：复杂标注＋综合图形**
+
+[Dimensioning Lines at Jamie Spinelli blog](https://images.openai.com/static-rsc-4/D46NGvejQqRj5i2G1SifhDQJy79YPVS1f0uVA4cTFJkzpUkjKKZnd4-OK9-wCi93Q39a0fCf52Cl2v2-zrtHW2f6RhL6PPlRA35YxVsPUCUtHxmztuvuu2cYeCOXU0yqybZ84zwVxSJmtG8fzmnMqaMRptb-HM7_emMDR0oRIzA?purpose=inline)
+
+[Principles of isometric projection — isometric scale | PPT](https://images.openai.com/static-rsc-4/ic6c2MuF-QmVFKAmvquxRp5zVbnkliXOfMAMSB1y4ghkMUesoRn5EoqUacS4ByHq5QjrUyY0SuHuzc_uW2pKghA7U6vo38gbwBOawfvqdyLNb8wRX3GQnAYmSxQhdBUSxXrynXh5u25OQDrDUcNq3eVvh110Rc0hY10LeweztQ0?purpose=inline)
+
+[– Schematic diagram of the Tennessee Eastman process.   | Download Scientific Diagram](https://images.openai.com/static-rsc-4/TJxiXV_UjH_aS0p9cenJXV6SBW3gOwXrakRMtsaA1q6Pnfc9rPoUqxCbLMJ6YP4EnfvaDcZL07HOHDLimaC5HMCME0rdZkBjPcVp5pw68nf5r1R4KQqHNBj5UqN115dyefDz2Kp8Yc6pPkpxJZ4sx419O0AfejsRGSBZtURiBkQ?purpose=inline)
+
+8
+
+- 尺寸标注、引出线、箭头、编号。
+- 流程图、结构图和复杂组合图。
+- 对象之间的连接关系与布局复现。
+
+## **九、最终建议：建立一套“混合原生对象输出标准”**
+
+如果让我替你确定技术方向，我会采用下面这套标准：
+
+| 对象          | 最终输出标准                  |
+| ----------- | ----------------------- |
+| 普通文字        | Word 文本                 |
+| 数学公式        | OMML 原生公式               |
+| 柱状图、折线图、饼图  | Word 原生图表               |
+| 有数据含义的工程曲线  | Word 原生图表，必要时矢量图        |
+| 无数据轴的工程几何曲线 | SVG/EMF，简单图形转 Word 原生形状 |
+| 箭头、引出线、尺寸线  | Word 原生形状               |
+| 简单流程图       | Word 原生形状及连接线           |
+| 复杂结构图       | SVG/EMF                 |
+| 照片、复杂纹理图    | 高质量原始图片或修复图片            |
+
+**最重要的不是追求所有内容都可编辑，而是尽可能让可以结构化的内容保持结构化，让无法可靠结构化的内容保真。**
+
+这才是精确复现与 Word 二次编辑之间比较合理的平衡。
+
+## **十、在正式设计程序前，我建议先做一个小型技术验证**
+
+我不建议现在就写一份很长的提示词，让 AI Studio 一次性开发全部功能。
+
+先做一个独立的“文档图形重建技术验证模块”，不修改 GlobalCodeTrans 的现有界面和内部流程。
+
+只验证四个问题：
+
+1. 一张包含复杂公式的 PDF，能否识别并转换成真正的 Word 原生公式？
+2. 一张包含多条曲线、坐标轴和图例的图表，能否提取数据并重建成 Word 原生图表？
+3. 一张包含工程曲线、箭头、尺寸线和文字标注的图纸，能否恢复其几何关系？
+4. 生成的 DOCX 重新打开后，是否仍然可以修改公式、图表和标注，且没有明显错位？
+
+我尤其建议第二个问题和第三个问题分别测试，不能因为普通折线图重建成功，就认为工程曲线也解决了。
+
+**我还想特别强调一个技术决策：不要把 MinerU 定义为整个程序的核心。** 它可以成为文档识别入口，但公式、图表、工程曲线、标注的重建能力，应当由独立模块承担。这样即使未来更换 MinerU，也不会影响整套程序。
+
+我的总体判断是：这条路线可行，而且比“全部截图后插入 Word”更有长期价值。但难度真正较高的部分不是 DOCX 文件生成，而是从复杂工程图像中恢复可靠的结构、坐标和对象关系。这个问题必须通过真实样本逐项验证，不能依赖模型演示效果。
+
+下一步最有价值的工作，是先制定一份**对象识别—结构化—重建—Word 输出的技术验证清单**，用真实工程 PDF 样本确定哪些内容能自动恢复、哪些需要人工校正，再决定正式开发范围。

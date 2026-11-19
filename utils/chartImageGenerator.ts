@@ -60,19 +60,13 @@ export function dataUrlToUint8Array(dataUrl: string): Uint8Array {
 }
 
 export function parseSpectrumBlock(content: string): SpectrumChartOptions {
-  let hasExplicit = content.includes('curves:') || content.includes('segment:') || content.includes('反应谱') || content.includes('Response Spectrum') || content.includes('SDS');
   const params: SpectrumChartOptions = {
     title: "设计加速度反应谱曲线 (Design Response Spectrum)",
-    T0: 0.08,
-    Ts: 0.40,
-    TL: 8.0,
-    SDS: 1.05,
-    SD1: 0.42,
-    caption: "图 6.1 设计加速度反应谱曲线 (Design Response Spectrum) • 依据 ASCE 7-16 / IBC 标准",
-    hasExplicitParameters: true,
+    caption: "图示：设计加速度反应谱说明（参数未详列，请以原件图样为准）",
+    hasExplicitParameters: false,
   };
 
-  const lines = content.split('\n');
+  const lines = (content || '').split('\n');
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -81,22 +75,41 @@ export function parseSpectrumBlock(content: string): SpectrumChartOptions {
       params.title = trimmed.replace('title:', '').trim();
     } else if (trimmed.startsWith('caption:')) {
       params.caption = trimmed.replace('caption:', '').trim();
-    } else if (trimmed.startsWith('parameters:') || trimmed.includes('T0') || trimmed.includes('SDS')) {
-      const t0Match = trimmed.match(/T_?0\s*=\s*([0-9\.]+)/i);
-      const tsMatch = trimmed.match(/T_?s\s*=\s*([0-9\.]+)/i);
-      const tlMatch = trimmed.match(/T_?L\s*=\s*([0-9\.]+)/i);
-      const sdsMatch = trimmed.match(/S_?\{?DS\}?\s*=\s*([0-9\.]+)/i);
-      const sd1Match = trimmed.match(/S_?\{?D1\}?\s*=\s*([0-9\.]+)/i);
+    } else {
+      const t0Match = trimmed.match(/\bT_?0\s*=\s*([0-9\.]+)/i);
+      const tsMatch = trimmed.match(/\bT_?s\s*=\s*([0-9\.]+)/i);
+      const tlMatch = trimmed.match(/\bT_?L\s*=\s*([0-9\.]+)/i);
+      const sdsMatch = trimmed.match(/\bS_?\{?DS\}?\s*=\s*([0-9\.]+)/i);
+      const sd1Match = trimmed.match(/\bS_?\{?D1\}?\s*=\s*([0-9\.]+)/i);
 
-      if (t0Match) { params.T0 = parseFloat(t0Match[1]); hasExplicit = true; }
-      if (tsMatch) { params.Ts = parseFloat(tsMatch[1]); hasExplicit = true; }
-      if (tlMatch) { params.TL = parseFloat(tlMatch[1]); hasExplicit = true; }
-      if (sdsMatch) { params.SDS = parseFloat(sdsMatch[1]); hasExplicit = true; }
-      if (sd1Match) { params.SD1 = parseFloat(sd1Match[1]); hasExplicit = true; }
+      if (t0Match) params.T0 = parseFloat(t0Match[1]);
+      if (tsMatch) params.Ts = parseFloat(tsMatch[1]);
+      if (tlMatch) params.TL = parseFloat(tlMatch[1]);
+      if (sdsMatch) params.SDS = parseFloat(sdsMatch[1]);
+      if (sd1Match) params.SD1 = parseFloat(sd1Match[1]);
     }
   }
 
-  params.hasExplicitParameters = hasExplicit;
+  // Traceable engineering derivation if explicit positive parameters SDS and SD1 exist:
+  // Ts = SD1 / SDS, T0 = 0.2 * Ts
+  if (params.SDS && params.SDS > 0 && params.SD1 && params.SD1 > 0) {
+    if (params.Ts === undefined || isNaN(params.Ts)) {
+      params.Ts = parseFloat((params.SD1 / params.SDS).toFixed(4));
+    }
+    if (params.T0 === undefined || isNaN(params.T0)) {
+      params.T0 = parseFloat((0.2 * (params.SD1 / params.SDS)).toFixed(4));
+    }
+  }
+
+  // Strict validation: must have valid positive numeric parameters with Ts > T0
+  const hasValidParams =
+    typeof params.SDS === 'number' && !isNaN(params.SDS) && params.SDS > 0 &&
+    typeof params.SD1 === 'number' && !isNaN(params.SD1) && params.SD1 > 0 &&
+    typeof params.T0 === 'number' && !isNaN(params.T0) && params.T0 > 0 &&
+    typeof params.Ts === 'number' && !isNaN(params.Ts) && params.Ts > params.T0 &&
+    (params.TL === undefined || (typeof params.TL === 'number' && !isNaN(params.TL) && params.TL > params.Ts));
+
+  params.hasExplicitParameters = Boolean(hasValidParams);
 
   return params;
 }
@@ -220,12 +233,22 @@ export function generateResponseSpectrumChartPng(options: SpectrumChartOptions =
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
-    // Engineering parameters
-    const T0 = options.T0 ?? 0.08;
-    const Ts = options.Ts ?? 0.40;
+    // Strict Engineering Fidelity Guard: Never fabricate a curve with unverified synthetic parameters
+    if (
+      !options.hasExplicitParameters ||
+      typeof options.SDS !== 'number' || options.SDS <= 0 ||
+      typeof options.SD1 !== 'number' || options.SD1 <= 0 ||
+      typeof options.T0 !== 'number' || options.T0 <= 0 ||
+      typeof options.Ts !== 'number' || options.Ts <= options.T0
+    ) {
+      return null;
+    }
+
+    const T0 = options.T0;
+    const Ts = options.Ts;
     const TL = options.TL ?? 8.0;
-    const SDS = options.SDS ?? 1.05;
-    const SD1 = options.SD1 ?? 0.42;
+    const SDS = options.SDS;
+    const SD1 = options.SD1;
 
     const padLeft = 130;
     const padRight = 100;
@@ -710,7 +733,7 @@ export function generateEngineeringDiagramPng(options: EngineeringDiagramOptions
     ctx.font = 'bold 14px "Cambria Math", sans-serif';
     ctx.fillStyle = '#2DD4BF';
     ctx.textAlign = 'right';
-    ctx.fillText('1:1 几何图样与标注复现', width - 55, 62);
+    ctx.fillText('几何图样与构造示意图', width - 55, 62);
 
     let curY = 100;
 
@@ -789,7 +812,7 @@ export function generateEngineeringDiagramPng(options: EngineeringDiagramOptions
       });
     } else {
       ctx.fillText('• 构造要素与几何尺寸严格依据条文规范执行', centerX, centerY + 10);
-      ctx.fillText('• 毫米级基准坐标与公差界限 1:1 精确复现', centerX, centerY + 34);
+      ctx.fillText('• 构造要素与公差界限依据图样规范呈现', centerX, centerY + 34);
     }
 
     // Parameter Badges Bar
@@ -918,7 +941,7 @@ export function generateSpecSheetLayoutPng(options?: any): Uint8Array | null {
     ctx.font = '13px "SimSun", sans-serif';
     ctx.fillStyle = '#475569';
     ctx.fillText('标题字体：14pt 黑体加粗 • 正文字体：12pt 宋体正体（严禁倾斜）', sheetX + sheetW / 2, sheetY + 135);
-    ctx.fillText('标准行距：1.15 倍行间距 • 排版版心与装订基准严格保持 1:1', sheetX + sheetW / 2, sheetY + 165);
+    ctx.fillText('标准行距：1.15 倍行间距 • 排版版心与装订基准符合技术规程', sheetX + sheetW / 2, sheetY + 165);
     ctx.fillText(`注：${notes}`, sheetX + sheetW / 2, sheetY + 195);
 
     // Bottom Caption
@@ -1221,7 +1244,7 @@ function drawDownArrow(ctx: CanvasRenderingContext2D, x: number, y1: number, y2:
 }
 
 /**
- * Generates Official Document Flowchart PNG for Word Export (100% Faithful Reproduction)
+ * Generates Official Document Flowchart PNG for Word Export
  */
 export function generateFlowchartPng(content: string): Uint8Array | null {
   if (typeof document === 'undefined') return null;
@@ -1934,6 +1957,107 @@ export function generateUniversalEmblemPng(orgName: string = "国家机构与行
     ctx.textBaseline = 'middle';
     const displayTitle = orgName.length > 14 ? orgName.slice(0, 14) + '...' : orgName;
     ctx.fillText(displayTitle, cx, cy + 56);
+
+    const dataUrl = canvas.toDataURL('image/png');
+    return dataUrlToUint8Array(dataUrl);
+  } catch {
+    return null;
+  }
+}
+
+export interface EconomicCurveOptions {
+  title?: string;
+  caption?: string;
+}
+
+export function generateEconomicCurveChartPng(options: EconomicCurveOptions = {}): Uint8Array | null {
+  if (typeof document === 'undefined') return null;
+
+  try {
+    const width = 1350;
+    const height = 640;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Pure White Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    const padLeft = 130;
+    const padRight = 180;
+    const padTop = 60;
+    const padBottom = 110;
+    const gWidth = width - padLeft - padRight;
+    const gHeight = height - padTop - padBottom;
+
+    const maxT = 10;
+    const minY = -300;
+    const maxY = 600;
+
+    const toX = (t: number) => padLeft + (t / maxT) * gWidth;
+    const toY = (y: number) => padTop + gHeight - ((y - minY) / (maxY - minY)) * gHeight;
+
+    // Grid lines
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    for (let t = 0; t <= 10; t++) {
+      const x = toX(t);
+      ctx.beginPath();
+      ctx.moveTo(x, padTop);
+      ctx.lineTo(x, padTop + gHeight);
+      ctx.stroke();
+    }
+    for (let y = -300; y <= 600; y += 100) {
+      const yy = toY(y);
+      ctx.beginPath();
+      ctx.moveTo(padLeft, yy);
+      ctx.lineTo(padLeft + gWidth, yy);
+      ctx.stroke();
+    }
+
+    // Zero line
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(padLeft, toY(0));
+    ctx.lineTo(padLeft + gWidth, toY(0));
+    ctx.stroke();
+
+    // Draw curves a, b, c, d, e, f
+    const curves = [
+      { name: 'a', color: '#e11d48', dash: [6, 4], pts: [[0, -300], [0.5, 0], [1, 370], [1.2, 600]] },
+      { name: 'b', color: '#9333ea', dash: [4, 4], pts: [[0, -300], [0.7, 0], [1, 440], [1.2, 600]] },
+      { name: 'c', color: '#f97316', dash: [2, 2], pts: [[0, -100], [1, 60], [2, 210], [4, 270], [6, 420], [7, 520], [8, 580]] },
+      { name: 'd', color: '#db2777', dash: [], pts: [[0, -300], [2, -90], [3, 0], [5, 210], [6, 325], [7, 430], [8, 530], [9, 600]] },
+      { name: 'e', color: '#06b6d4', dash: [], pts: [[0, -250], [1.2, 0], [2, 35], [4, 175], [5, 215], [7, 355], [8, 395], [9, 430], [10, 470]] },
+      { name: 'f', color: '#16a34a', dash: [1, 3], pts: [[0, -300], [1, -250], [2, -240], [3, -150], [4, -140], [5, -60], [6.5, 0], [8, 70], [9, 90], [10, 165]] }
+    ];
+
+    for (const c of curves) {
+      ctx.strokeStyle = c.color;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash(c.dash);
+      ctx.beginPath();
+      for (let i = 0; i < c.pts.length; i++) {
+        const x = toX(c.pts[i][0]);
+        const y = toY(c.pts[i][1]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Axes labels & title
+    ctx.font = 'bold 16px "Times New Roman", sans-serif';
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'left';
+    ctx.fillText('▲ EFo, USD', padLeft - 20, padTop - 20);
+    ctx.textAlign = 'right';
+    ctx.fillText('TOL, years', padLeft + gWidth + 50, toY(0) + 30);
 
     const dataUrl = canvas.toDataURL('image/png');
     return dataUrlToUint8Array(dataUrl);

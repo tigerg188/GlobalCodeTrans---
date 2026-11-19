@@ -237,7 +237,7 @@ export const OfficialDocMarginViewer: React.FC<{ content: string }> = ({ content
           </span>
         </div>
         <div className="text-[11px] text-teal-700 font-sans font-semibold">
-          标准版心比例 100% 保持
+          标准公文版心尺寸规范
         </div>
       </div>
 
@@ -529,7 +529,7 @@ export const OfficialSignatureSealViewer: React.FC<{ content: string }> = ({ con
 
 /**
  * 4. Official Document Workflow & Flowchart Viewer
- * 100% faithful reproduction of official designation procedure and technical workflows
+ * Official designation procedure and technical workflows layout
  * Supports: Rounded start/end pills, process rectangles, true decision diamonds,
  * dual-branch conditional routing ([Yes] / [No]), corrective loopback boxes, and footnotes.
  */

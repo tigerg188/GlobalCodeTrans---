@@ -845,3 +845,180 @@ export const SpecSheetLayoutViewer: React.FC<{ content: string }> = ({ content }
     </div>
   );
 };
+
+export interface EconomicCurveParams {
+  title?: string;
+  caption?: string;
+}
+
+export function parseEconomicCurveBlock(content: string): EconomicCurveParams {
+  const params: EconomicCurveParams = {
+    title: "多系列经济效益曲线与交点分析图 (Economic Efficiency Curves E_Fo vs T_OL)",
+    caption: "图示：多系列经济效益曲线与交点分析图 (E_Fo vs T_OL) • 依据专业工程经济学标准"
+  };
+  const lines = (content || '').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('title:')) {
+      params.title = trimmed.replace('title:', '').trim();
+    } else if (trimmed.startsWith('caption:')) {
+      params.caption = trimmed.replace('caption:', '').trim();
+    }
+  }
+  return params;
+}
+
+export const EconomicCurveChart: React.FC<{ content: string }> = ({ content }) => {
+  const params = parseEconomicCurveBlock(content || '');
+  
+  // SVG dimensions: 1350 x 640
+  const width = 1350;
+  const height = 640;
+  const padLeft = 130;
+  const padRight = 180;
+  const padTop = 60;
+  const padBottom = 110;
+  const gWidth = width - padLeft - padRight;
+  const gHeight = height - padTop - padBottom;
+  const maxT = 10;
+  const minY = -300;
+  const maxY = 600;
+
+  const toX = (t: number) => padLeft + (t / maxT) * gWidth;
+  const toY = (y: number) => padTop + gHeight - ((y - minY) / (maxY - minY)) * gHeight;
+
+  // Curves data matching generateEconomicCurveChartPng
+  const curves = [
+    { name: 'a', label: 'a (极限推进)', color: '#e11d48', dash: '6,4', pts: [[0, -300], [0.5, 0], [1, 370], [1.2, 600]] },
+    { name: 'b', label: 'b (加速折旧)', color: '#9333ea', dash: '4,4', pts: [[0, -300], [0.7, 0], [1, 440], [1.2, 600]] },
+    { name: 'c', label: 'c (基准预测)', color: '#f97316', dash: '2,2', pts: [[0, -100], [1, 60], [2, 210], [4, 270], [6, 420], [7, 520], [8, 580]] },
+    { name: 'd', label: 'd (线性增长)', color: '#db2777', dash: '', pts: [[0, -300], [2, -90], [3, 0], [5, 210], [6, 325], [7, 430], [8, 530], [9, 600]] },
+    { name: 'e', label: 'e (优化运维)', color: '#06b6d4', dash: '', pts: [[0, -250], [1.2, 0], [2, 35], [4, 175], [5, 215], [7, 355], [8, 395], [9, 430], [10, 470]] },
+    { name: 'f', label: 'f (保守延迟)', color: '#16a34a', dash: '2,6', pts: [[0, -300], [1, -250], [2, -240], [3, -150], [4, -140], [5, -60], [6.5, 0], [8, 70], [9, 90], [10, 165]] }
+  ];
+
+  return (
+    <div className="my-6 border border-slate-300 rounded-xl overflow-hidden bg-white shadow-md font-sans">
+      {/* Header Bar */}
+      <div className="px-5 py-3 bg-slate-900 text-white flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2.5">
+          <Activity className="w-5 h-5 text-teal-400" />
+          <div>
+            <h4 className="text-sm font-bold tracking-wide">
+              {params.title}
+            </h4>
+            <div className="text-[10px] text-slate-300">
+              工程经济学多系列效益与寿命周期交叉分析模型
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] bg-teal-500/20 text-teal-300 border border-teal-500/30 px-2.5 py-1 rounded-full font-bold">
+            多曲线高保真重建 (E1 级)
+          </span>
+        </div>
+      </div>
+
+      {/* SVG Chart Container */}
+      <div className="p-4 bg-white flex justify-center overflow-x-auto">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full max-w-[920px] h-auto select-none bg-white">
+          {/* Grid lines vertical */}
+          {Array.from({ length: 11 }, (_, i) => i).map(t => {
+            const x = toX(t);
+            return (
+              <g key={`v-grid-${t}`}>
+                <line x1={x} y1={padTop} x2={x} y2={padTop + gHeight} stroke="#e2e8f0" strokeWidth="1" />
+                <text x={x} y={padTop + gHeight + 22} textAnchor="middle" fill="#334155" fontSize="13" fontFamily="Times New Roman, serif">
+                  {t}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Grid lines horizontal */}
+          {[-300, -200, -100, 0, 100, 200, 300, 400, 500, 600].map(y => {
+            const yy = toY(y);
+            return (
+              <g key={`h-grid-${y}`}>
+                <line x1={padLeft} y1={yy} x2={padLeft + gWidth} y2={yy} stroke={y === 0 ? '#000000' : '#e2e8f0'} strokeWidth={y === 0 ? '2' : '1'} />
+                <text x={padLeft - 15} y={yy + 5} textAnchor="end" fill="#334155" fontSize="13" fontFamily="Times New Roman, serif">
+                  {y}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Axis Labels */}
+          <text x={padLeft - 30} y={padTop - 25} fill="#000000" fontSize="15" fontWeight="bold" fontFamily="Times New Roman, serif">
+            ▲ EFo, USD
+          </text>
+          <text x={padLeft + gWidth + 60} y={toY(0) + 35} fill="#000000" fontSize="15" fontWeight="bold" fontFamily="Times New Roman, serif">
+            TOL, years
+          </text>
+
+          {/* Draw Curves */}
+          {curves.map(c => {
+            const ptsStr = c.pts.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${toX(p[0])} ${toY(p[1])}`).join(' ');
+            return (
+              <g key={`curve-${c.name}`}>
+                <path
+                  d={ptsStr}
+                  fill="none"
+                  stroke={c.color}
+                  strokeWidth="3"
+                  strokeDasharray={c.dash ? c.dash.replace(',', ' ') : undefined}
+                />
+                {c.pts.map((p, idx) => (
+                  <circle key={`pt-${c.name}-${idx}`} cx={toX(p[0])} cy={toY(p[1])} r="4" fill={c.color} stroke="#ffffff" strokeWidth="1.5" />
+                ))}
+              </g>
+            );
+          })}
+
+          {/* Key Intersection Points G, A, B, C, D, E, F */}
+          <g>
+            {/* Point G */}
+            <circle cx={toX(0.8)} cy={toY(290)} r="5" fill="#000000" />
+            <text x={toX(0.8) + 14} y={toY(290) + 5} fill="#000000" fontSize="14" fontWeight="bold" fontFamily="Times New Roman, serif">G</text>
+            
+            {/* Point A */}
+            <circle cx={toX(0)} cy={toY(0)} r="5" fill="#e11d48" />
+            <text x={toX(0) - 15} y={toY(0) + 18} fill="#e11d48" fontSize="14" fontWeight="bold" fontFamily="Times New Roman, serif">A</text>
+
+            {/* Point E */}
+            <circle cx={toX(3)} cy={toY(0)} r="5" fill="#db2777" />
+            <text x={toX(3) - 5} y={toY(0) + 25} fill="#db2777" fontSize="14" fontWeight="bold" fontFamily="Times New Roman, serif">E</text>
+
+            {/* Point F */}
+            <circle cx={toX(6.5)} cy={toY(0)} r="5" fill="#16a34a" />
+            <text x={toX(6.5) - 5} y={toY(0) + 25} fill="#16a34a" fontSize="14" fontWeight="bold" fontFamily="Times New Roman, serif">F</text>
+          </g>
+
+          {/* Legend Box */}
+          <g transform={`translate(${padLeft + gWidth + 20}, ${padTop + 20})`}>
+            <rect x="0" y="0" width="140" height="190" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.5" rx="6" />
+            {curves.map((c, idx) => {
+              const yOff = 22 + idx * 28;
+              return (
+                <g key={`legend-${c.name}`} transform={`translate(12, ${yOff})`}>
+                  <line x1="0" y1="0" x2="30" y2="0" stroke={c.color} strokeWidth="3" strokeDasharray={c.dash ? c.dash.replace(',', ' ') : undefined} />
+                  <circle cx="15" cy="0" r="3.5" fill={c.color} />
+                  <text x="38" y="4" fill="#1e293b" fontSize="13" fontWeight="bold" fontFamily="Times New Roman, serif">
+                    - {c.name}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+      </div>
+
+      {/* Caption Footer */}
+      <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-center">
+        <div className="text-xs font-bold text-slate-900 tracking-wide">
+          {params.caption}
+        </div>
+      </div>
+    </div>
+  );
+};

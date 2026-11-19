@@ -6,7 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import katex from 'katex';
 import { normalizeMarkdown } from '../utils/markdownSanitizer';
-import { ResponseSpectrumChart, WindPressureChart, SpecSheetLayoutViewer, EngineeringDiagramViewer } from './EngineeringCharts';
+import { ResponseSpectrumChart, WindPressureChart, SpecSheetLayoutViewer, EngineeringDiagramViewer, EconomicCurveChart } from './EngineeringCharts';
 import { 
   OfficialDocMarginViewer, 
   OfficialHeaderGridViewer, 
@@ -442,18 +442,28 @@ const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content, markdown }) =>
               }
             }
 
-            const isSvg = lang === 'svg' || (codeString.includes('<svg') && codeString.includes('</svg>')) || codeString.trim().startsWith('<?xml');
+            const isEconomicCurve = lang.includes('economic') || lang.includes('curve') || 
+              codeString.includes('EFo') || codeString.includes('TOL') || 
+              codeString.includes('E_Fo') || codeString.includes('T_OL') || 
+              codeString.includes('E_FO') || codeString.includes('xychart-beta') || 
+              codeString.includes('经济效益');
+            const hasRealSvgPaths = codeString.includes('<path') || codeString.includes('<polyline') || codeString.includes('<polygon');
+            const isDegenerateSvg = (codeString.includes('EFo') || codeString.includes('TOL') || codeString.includes('E_Fo') || codeString.includes('T_OL') || codeString.includes('E_FO')) && !hasRealSvgPaths;
+            const isSvg = (lang === 'svg' || (codeString.includes('<svg') && codeString.includes('</svg>')) || codeString.trim().startsWith('<?xml')) && !isDegenerateSvg;
             const isFlowchart = lang.includes('flowchart') || lang.includes('process') || lang.includes('workflow') || (codeString.includes('steps:') && (codeString.includes('->') || codeString.includes('→') || codeString.includes('- ')));
             const isDimension = lang.includes('dimension') || (codeString.includes('纸张标准规格') || (codeString.includes('装订') && codeString.includes('mm') && !codeString.includes('margins:')));
             const isAuditParams = lang.includes('audit') || lang.includes('params');
             const isDocMargin = lang.includes('margin') || (lang.includes('layout') && (codeString.includes('marginLeft') || codeString.includes('margins:') || codeString.includes('装订') || codeString.includes('binding')));
             const isHeaderGrid = lang.includes('header') || lang.includes('letterhead') || (lang.includes('layout') && (codeString.includes('countryName') || codeString.includes('ministry') || codeString.includes('motto')));
             const isSignatureSeal = lang.includes('seal') || lang.includes('signature') || codeString.includes('sealDiameter') || codeString.includes('signatory') || codeString.includes('骑年盖月');
-            const isSpectrum = lang.includes('spectrum') || lang.includes('response') || codeString.includes('SDS');
+            const isSpectrum = (lang.includes('spectrum') || lang.includes('response') || codeString.includes('SDS')) && !isEconomicCurve;
             const isWind = lang.includes('wind') || lang.includes('pressure') || (codeString.includes('qz') && codeString.includes('Cp'));
             const isLayout = lang.includes('layout') || lang.includes('spec-sheet') || lang.includes('blueprint');
             const isDiagram = lang.includes('diagram') || lang.includes('chart') || lang.includes('figure') || lang.includes('drawing') || lang.includes('detail') || lang.includes('section') || codeString.includes('caption:');
 
+            if (!inline && isEconomicCurve) {
+              return <EconomicCurveChart content={codeString} />;
+            }
             if (!inline && isSvg) {
               return <UniversalSvgViewer content={codeString} />;
             }
@@ -462,6 +472,9 @@ const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content, markdown }) =>
             }
             if (!inline && isDimension) {
               return <OfficialDimensionViewer content={codeString} />;
+            }
+            if (!inline && isEconomicCurve) {
+              return <EconomicCurveChart content={codeString} />;
             }
 
             if (!inline && isAuditParams) {

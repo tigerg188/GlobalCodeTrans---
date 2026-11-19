@@ -4,14 +4,22 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:fidelity": "tsx scripts/test_fidelity_audit.ts",
+    "test:ir": "tsx scripts/test_document_ir.ts",
+    "test:parser": "tsx scripts/test_geometry_parser.ts",
+    "test:benchmark": "tsx scripts/test_v17_blind_benchmark.ts",
+    "test:eval": "tsx scripts/test_attachment_evaluation.ts"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
+    "@types/express": "^5.0.6",
+    "@types/ws": "^8.18.2",
     "docx": "^9.7.1",
+    "express": "^5.3.0",
     "katex": "^0.18.9",
     "lucide-react": "^1.34.0",
     "mammoth": "^1.13.0",
@@ -23,14 +31,18 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "ws": "^8.22.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/adm-zip": "^0.6.0",
     "@types/katex": "^0.16.8",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "adm-zip": "^0.6.1",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

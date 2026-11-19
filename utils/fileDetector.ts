@@ -46,6 +46,9 @@ export function detectDocumentType(file: File, buffer?: ArrayBuffer): SupportedF
     fileName.endsWith('.png') ||
     fileName.endsWith('.jpg') ||
     fileName.endsWith('.jpeg') ||
+    fileName.endsWith('.jfif') ||
+    fileName.endsWith('.jfi') ||
+    fileName.endsWith('.jpe') ||
     fileName.endsWith('.webp') ||
     fileName.endsWith('.bmp') ||
     fileName.endsWith('.gif') ||
