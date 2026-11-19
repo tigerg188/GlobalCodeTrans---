@@ -12,7 +12,8 @@
     "test:ir": "tsx scripts/test_document_ir.ts",
     "test:parser": "tsx scripts/test_geometry_parser.ts",
     "test:benchmark": "tsx scripts/test_v17_blind_benchmark.ts",
-    "test:eval": "tsx scripts/test_attachment_evaluation.ts"
+    "test:eval": "tsx scripts/test_attachment_evaluation.ts",
+    "test:curve": "tsx scripts/test_economic_curve_data.ts"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

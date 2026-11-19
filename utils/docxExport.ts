@@ -34,7 +34,6 @@ import {
   generateHeaderGridLayoutPng,
   generateSignatureSealLayoutPng,
   generateFlowchartPng,
-  generateEconomicCurveChartPng,
   parseFlowchartBlock,
   parseSpectrumBlock,
   parseWindBlock,
@@ -44,6 +43,8 @@ import {
   SvgRenderResult,
   dataUrlToUint8Array,
 } from './chartImageGenerator';
+import { generateEconomicCurveSvg } from './economicCurveSvg';
+import { normalizeEconomicCurveBlock } from './economicCurveNormalizer';
 import {
   parseDocMarginBlock,
   parseHeaderGridBlock,
@@ -853,11 +854,16 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
       }
       if (i < lines.length) i++; // skip closing ```
       const blockContent = codeLines.join('\n');
-      const isEconomicCurve = codeType.includes('economic') || codeType.includes('curve') || 
-        blockContent.includes('EFo') || blockContent.includes('TOL') || 
-        blockContent.includes('E_Fo') || blockContent.includes('T_OL') || 
-        blockContent.includes('E_FO') || blockContent.includes('xychart-beta') || 
-        blockContent.includes('经济效益');
+      const isAuditBlockPre = codeType.includes('audit') || codeType.includes('params') || blockContent.includes('DIAGRAM-AUDIT-PARAMETERS') || (blockContent.trim().startsWith('[') && blockContent.includes('"name"'));
+      const isEconomicCurve = !isAuditBlockPre && (
+        codeType.includes('economic') || codeType.includes('curve') ||
+        blockContent.includes('xychart-beta') ||
+        ((blockContent.includes('series:') || blockContent.includes('xAxis:')) && (
+          blockContent.includes('EFo') || blockContent.includes('TOL') ||
+          blockContent.includes('E_Fo') || blockContent.includes('T_OL') ||
+          blockContent.includes('E_FO') || blockContent.includes('经济效益')
+        ))
+      );
       const hasRealSvgPaths = blockContent.includes('<path') || blockContent.includes('<polyline') || blockContent.includes('<polygon');
       const isDegenerateSvg = (blockContent.includes('EFo') || blockContent.includes('TOL') || blockContent.includes('E_Fo') || blockContent.includes('T_OL') || blockContent.includes('E_FO')) && !hasRealSvgPaths;
       const isSvg = (codeType.includes('svg') || blockContent.includes('<svg') || (codeType === 'xml' && blockContent.includes('<svg'))) && !isDegenerateSvg;
@@ -876,8 +882,19 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
       let customHeight: number | null = null;
 
       if (isEconomicCurve) {
-        chartImageBuffer = generateEconomicCurveChartPng();
-        figureCaption = "图示：多系列经济效益曲线与交点分析图 (E_Fo vs T_OL)";
+        const normalizedCurveContent = normalizeEconomicCurveBlock(blockContent);
+        const curveSvg = generateEconomicCurveSvg(normalizedCurveContent);
+        if (curveSvg) {
+          const rendered = await renderSvgToPngBuffer(curveSvg, 540);
+          if (rendered) {
+            chartImageBuffer = rendered.buffer;
+            customHeight = Math.min(rendered.height, 500);
+          }
+          figureCaption = "图示：" + (normalizedCurveContent.match(/^caption:\s*(.*)$/im)?.[1] || "工程曲线图（依据输入数据绘制）");
+        } else {
+          chartImageBuffer = null;
+          figureCaption = "工程曲线未生成：缺少可核验的原始数据点，不使用示例曲线替代";
+        }
       } else if (isSvg) {
         const svgRes = await renderSvgToPngBuffer(blockContent, 540);
         if (svgRes) {
@@ -987,6 +1004,25 @@ export async function exportMarkdownToDocx(markdown: string, documentTitle: stri
         if (i < lines.length && (lines[i].trim() === figureCaption.trim() || (lines[i].trim().startsWith('图') && lines[i].trim().length > 5 && figureCaption.includes(lines[i].trim().slice(0, 10))))) {
           i++;
         }
+        continue;
+      }
+
+      if (isEconomicCurve && !chartImageBuffer) {
+        docElements.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+              new TextRun({
+                text: "【" + figureCaption + "】",
+                bold: true,
+                size: 21,
+                color: "B45309",
+                font: { ascii: FONT_ENGLISH, eastAsia: FONT_CHINESE_HEADING, cs: FONT_LAO },
+              }),
+            ],
+            spacing: { before: 120, after: 120, line: LINE_SPACING_1_15, lineRule: LineRuleType.AUTO },
+          })
+        );
         continue;
       }
 
