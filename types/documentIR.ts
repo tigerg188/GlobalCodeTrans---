@@ -1,33 +1,49 @@
 /**
  * GlobalCodeTrans V1.7 - Document Intermediate Representation (DocumentIR)
- * 
- * A unified, standard data contract for document objects (formulas, charts, 
- * geometry, annotations, paragraphs, and tables) decoupled from rendering engines.
- * 
- * Supports multi-dimensional confidence metrics, provenance tracking, verification 
- * status, and editability grading (E0 - E3).
+ *
+ * Unified data contract for document objects.
+ *
+ * Confidence values may be null when a metric has not actually been measured.
+ * Unknown values must never be represented as fabricated numeric scores.
  */
 
 export type EditabilityGrade = 'E1' | 'E2' | 'E3' | 'E0';
 
-export type ProvenanceSource = 
-  | 'pdf_native_vector' 
-  | 'ocr_text' 
-  | 'gemini_multimodal' 
-  | 'opencv_geometry' 
+export type ProvenanceSource =
+  | 'pdf_native_vector'
+  | 'ocr_text'
+  | 'gemini_multimodal'
+  | 'opencv_geometry'
   | 'manual_correction';
 
-export type VerificationStatus = 
-  | 'raw' 
-  | 'structural_validated' 
-  | 'conflict' 
+export type VerificationStatus =
+  | 'raw'
+  | 'structural_validated'
+  | 'conflict'
   | 'human_verified';
 
+/**
+ * Multi-dimensional confidence and measurement record.
+ *
+ * null means "not measured / not available".
+ *
+ * It does NOT mean zero confidence, zero extraction quality,
+ * zero geometry error, or a failed measurement.
+ */
 export interface MultiDimensionalConfidence {
-  modelConfidence: number;      // Model self-reported confidence (0.0 - 1.0)
-  extractionQuality: number;    // Algorithmic extraction completeness (0.0 - 1.0)
-  geometryError: number;        // Spatial/pixel measurement deviation metric (lower is better)
-  semanticValidation: boolean;  // Syntax/logical check passed (true/false)
+  /** Model self-reported confidence (0.0 - 1.0); null if unavailable. */
+  modelConfidence: number | null;
+
+  /** Algorithmic extraction completeness (0.0 - 1.0); null if not measured. */
+  extractionQuality: number | null;
+
+  /** Spatial/pixel measurement deviation; null if not measured. */
+  geometryError: number | null;
+
+  /** Whether semantic validation was actually performed and passed.
+   *  null = not evaluated; false = evaluated and failed; true = passed.
+   */
+  semanticValidation: boolean | null;
 }
 
 export interface BaseIRObject {
@@ -52,7 +68,7 @@ export interface FormulaIR extends BaseIRObject {
   rawLatex: string;
   ommlXml?: string;
   variables?: { name: string; description: string; unit?: string }[];
-  numbering?: string; // e.g. "(6.6)"
+  numbering?: string;
 }
 
 export interface ChartIR extends BaseIRObject {
@@ -105,7 +121,12 @@ export interface TextParagraphIR extends BaseIRObject {
   isUnderline?: boolean;
 }
 
-export type DocumentElementIR = FormulaIR | ChartIR | GeometryIR | AnnotationIR | TextParagraphIR;
+export type DocumentElementIR =
+  | FormulaIR
+  | ChartIR
+  | GeometryIR
+  | AnnotationIR
+  | TextParagraphIR;
 
 export interface DocumentIRContainer {
   documentId: string;
@@ -128,7 +149,13 @@ export function auditDocumentIR(ir: DocumentIRContainer): {
   uncertainCount: number;
   unverifiedCount: number;
 } {
-  const breakdown: Record<EditabilityGrade, number> = { E1: 0, E2: 0, E3: 0, E0: 0 };
+  const breakdown: Record<EditabilityGrade, number> = {
+    E1: 0,
+    E2: 0,
+    E3: 0,
+    E0: 0,
+  };
+
   let uncertain = 0;
   let unverified = 0;
 
@@ -136,8 +163,17 @@ export function auditDocumentIR(ir: DocumentIRContainer): {
     if (breakdown[el.editabilityGrade] !== undefined) {
       breakdown[el.editabilityGrade]++;
     }
-    if (el.isUncertain) uncertain++;
-    if (el.verificationStatus === 'raw' || el.verificationStatus === 'conflict') unverified++;
+
+    if (el.isUncertain) {
+      uncertain++;
+    }
+
+    if (
+      el.verificationStatus === 'raw' ||
+      el.verificationStatus === 'conflict'
+    ) {
+      unverified++;
+    }
   }
 
   return {
